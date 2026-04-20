@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<title>Stock Viewer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div id="toolbar">
+    <h1>StockView</h1>
+    <input id="ticker-input" type="text" placeholder="e.g. AAPL" spellcheck="false">
+    <input id="date-input" type="text" placeholder="YYYYMMDD" maxlength="8" spellcheck="false">
+    <select id="interval-select">
+      <option value="1m">1m  (last 7d)</option>
+      <option value="2m">2m  (last 60d)</option>
+      <option value="5m">5m  (last 60d)</option>
+      <option value="15m">15m (last 60d)</option>
+      <option value="30m">30m (last 60d)</option>
+      <option value="60m">1h  (last 2y)</option>
+      <option value="1d">1d  (all time)</option>
+    </select>
+    <button id="load-btn">Load</button>
+    <span id="error-msg"></span>
+    <span id="hint-msg"></span>
+  </div>
+
+  <div id="info-strip" class="hidden">
+    <span id="info-text"></span>
+    <span id="info-delisted"></span>
+  </div>
+
+  <div id="chart-wrap">
+    <div id="chart"></div>
+    <div id="placeholder">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="1.5">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <p>Enter a ticker and date, then click Load</p>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span class="sym hidden"  id="sb-sym"></span>
+    <span class="price hidden" id="sb-price"></span>
+    <span class="chg hidden"   id="sb-chg"></span>
+    <span class="exch hidden"  id="sb-exch"></span>
+    <span class="utc-note">Times in ET (New York)</span>
+  </div>
+
+  <script src="./node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
