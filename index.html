@@ -30,14 +30,36 @@
     <span id="info-delisted"></span>
   </div>
 
-  <div id="chart-wrap">
-    <div id="chart"></div>
-    <div id="placeholder">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="1.5">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-      </svg>
-      <p>Enter a ticker and date, then click Load</p>
+  <div id="main-area">
+
+    <div id="sidebar">
+      <div class="wl-section">
+        <div class="wl-header">
+          <span>Tickers</span>
+          <button class="wl-add" id="wl-add-ticker" title="Save current ticker">+</button>
+        </div>
+        <ul class="wl-list" id="wl-ticker-list"></ul>
+      </div>
+      <div class="wl-divider"></div>
+      <div class="wl-section">
+        <div class="wl-header">
+          <span>Dates</span>
+          <button class="wl-add" id="wl-add-date" title="Save current date">+</button>
+        </div>
+        <ul class="wl-list" id="wl-date-list"></ul>
+      </div>
     </div>
+
+    <div id="chart-wrap">
+      <div id="chart"></div>
+      <div id="placeholder">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="1.5">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <p>Enter a ticker and date, then click Load</p>
+      </div>
+    </div>
+
   </div>
 
   <div id="statusbar">

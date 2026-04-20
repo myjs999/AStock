@@ -209,6 +209,75 @@ loadBtn.addEventListener('click', load);
 tickerInput.addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 dateInput.addEventListener('keydown',   e => { if (e.key === 'Enter') load(); });
 
+// ── Watchlist ───────────────────────────────────────────
+const wlTickerList = document.getElementById('wl-ticker-list');
+const wlDateList   = document.getElementById('wl-date-list');
+const wlAddTicker  = document.getElementById('wl-add-ticker');
+const wlAddDate    = document.getElementById('wl-add-date');
+
+let watchlist = { tickers: [], dates: [] };
+
+async function wlInit() {
+  watchlist = await window.watchlistAPI.load();
+  wlRender();
+}
+
+function wlSave() {
+  window.watchlistAPI.save(watchlist);
+}
+
+function wlRender() {
+  wlRenderList(wlTickerList, watchlist.tickers, 'ticker');
+  wlRenderList(wlDateList,   watchlist.dates,   'date');
+}
+
+function wlRenderList(ul, items, type) {
+  ul.innerHTML = '';
+  items.forEach((val, i) => {
+    const li     = document.createElement('li');
+    li.className = 'wl-item';
+
+    const label = document.createElement('span');
+    label.className   = 'wl-label';
+    label.textContent = val;
+    label.title       = val;
+    label.addEventListener('click', () => {
+      if (type === 'ticker') tickerInput.value = val;
+      else                   dateInput.value   = val;
+      load();
+    });
+
+    const rm = document.createElement('button');
+    rm.className   = 'wl-remove';
+    rm.textContent = '×';
+    rm.title       = 'Remove';
+    rm.addEventListener('click', e => {
+      e.stopPropagation();
+      (type === 'ticker' ? watchlist.tickers : watchlist.dates).splice(i, 1);
+      wlSave();
+      wlRender();
+    });
+
+    li.appendChild(label);
+    li.appendChild(rm);
+    ul.appendChild(li);
+  });
+}
+
+function wlAdd(type) {
+  const raw = type === 'ticker'
+    ? tickerInput.value.trim().toUpperCase()
+    : dateInput.value.trim().replace(/-/g, '');
+  if (!raw) return;
+  const arr = type === 'ticker' ? watchlist.tickers : watchlist.dates;
+  if (!arr.includes(raw)) { arr.push(raw); wlSave(); wlRender(); }
+}
+
+wlAddTicker.addEventListener('click', () => wlAdd('ticker'));
+wlAddDate.addEventListener('click',   () => wlAdd('date'));
+
+wlInit();
+
 // Tab anywhere → jump to ticker input
 document.addEventListener('keydown', e => {
   if (e.key === 'Tab') {

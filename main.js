@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, net } = require('electron');
 const path = require('path');
+const fs   = require('fs');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -365,6 +366,26 @@ function createWindow() {
   });
   win.loadFile('index.html');
 }
+
+// ── Watchlist persistence ───────────────────────────────────
+function watchlistPath() {
+  return path.join(app.getPath('userData'), 'watchlist.json');
+}
+
+ipcMain.handle('watchlist-load', () => {
+  try {
+    const p = watchlistPath();
+    if (!fs.existsSync(p)) return { tickers: [], dates: [] };
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch { return { tickers: [], dates: [] }; }
+});
+
+ipcMain.handle('watchlist-save', (_e, data) => {
+  try {
+    fs.writeFileSync(watchlistPath(), JSON.stringify(data), 'utf8');
+    return true;
+  } catch { return false; }
+});
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
