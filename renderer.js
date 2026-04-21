@@ -24,16 +24,53 @@ tickerInput.value = 'AAPL';
 dateInput.value = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
 // ── Chart setup ────────────────────────────────────────────────
-function fmtET(ts, opts) {
-  return new Date(ts * 1000).toLocaleString('en-US', { timeZone: 'America/New_York', ...opts });
+// Timezone is updated dynamically when a stock loads
+let chartTZ = 'America/New_York';
+
+function fmtTZ(ts, opts) {
+  return new Date(ts * 1000).toLocaleString('en-US', { timeZone: chartTZ, ...opts });
+}
+
+function tzTimeFormatters() {
+  return {
+    localization: {
+      timeFormatter: ts => fmtTZ(ts, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+    },
+    timeScale: {
+      tickMarkFormatter: (ts, type) => {
+        if (type >= 3) return fmtTZ(ts, { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (type === 2) return fmtTZ(ts, { month: 'short', day: 'numeric' });
+        if (type === 1) return fmtTZ(ts, { month: 'short', year: 'numeric' });
+        return fmtTZ(ts, { year: 'numeric' });
+      }
+    }
+  };
+}
+
+function setChartTZ(tz, label) {
+  chartTZ = tz;
+  chart.applyOptions(tzTimeFormatters());
+  document.querySelector('.utc-note').textContent = label;
+}
+
+// Market timezone detection from Yahoo's exchangeName / symbol suffix
+const TZ_MAP = [
+  { test: s => /\.(SS|SZ)$/i.test(s),  tz: 'Asia/Shanghai',    label: 'Times in CST (Beijing)'   },
+  { test: s => /\.HK$/i.test(s),        tz: 'Asia/Hong_Kong',   label: 'Times in HKT (Hong Kong)'  },
+  { test: s => /\.L$/i.test(s),         tz: 'Europe/London',    label: 'Times in GMT/BST (London)' },
+  { test: s => /\.T$/i.test(s),         tz: 'Asia/Tokyo',       label: 'Times in JST (Tokyo)'      },
+];
+
+function applyMarketTZ(symbol) {
+  for (const { test, tz, label } of TZ_MAP) {
+    if (test(symbol)) { setChartTZ(tz, label); return; }
+  }
+  setChartTZ('America/New_York', 'Times in ET (New York)');
 }
 
 const chart = LightweightCharts.createChart(chartEl, {
   autoSize: true,
-  localization: {
-    // crosshair time tooltip
-    timeFormatter: ts => fmtET(ts, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
-  },
+  ...tzTimeFormatters(),
   layout: {
     background: { type: 'solid', color: '#131722' },
     textColor: '#d1d4dc'
@@ -50,13 +87,7 @@ const chart = LightweightCharts.createChart(chartEl, {
     secondsVisible: false,
     fixLeftEdge: true,
     fixRightEdge: true,
-    // axis tick labels — TickMarkType: 0=Year 1=Month 2=Day 3=Time 4=TimeWithSecs
-    tickMarkFormatter: (ts, type) => {
-      if (type >= 3) return fmtET(ts, { hour: '2-digit', minute: '2-digit', hour12: false });
-      if (type === 2) return fmtET(ts, { month: 'short', day: 'numeric' });
-      if (type === 1) return fmtET(ts, { month: 'short', year: 'numeric' });
-      return fmtET(ts, { year: 'numeric' });
-    }
+    ...tzTimeFormatters().timeScale
   },
   handleScroll: true,
   handleScale: true
@@ -165,6 +196,9 @@ async function load() {
     hints.push(reason);
   }
   showHint(hints.join('  ·  '));
+
+  // update chart timezone to match the market
+  applyMarketTZ(result.symbol);
 
   // render candles + volume
   candleMap.clear();

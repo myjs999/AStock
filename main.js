@@ -26,13 +26,29 @@ const INTERVAL_MAX_DAYS = { '1m': 7, '2m': 60, '5m': 60, '15m': 60, '30m': 60, '
 // Ordered finest → coarsest for auto-upgrade logic
 const INTERVAL_ORDER = ['1m', '2m', '5m', '15m', '30m', '60m', '1d'];
 
+// US exchange suffixes to strip (Yahoo uses bare ticker for US stocks)
+const US_EXCHANGE_CODES = new Set(['NYS', 'NYQ', 'NAS', 'ASE', 'PCX', 'PINK', 'OTC', 'NYSE', 'NASDAQ']);
+
+// Chinese / other exchange suffix → Yahoo Finance suffix
+const SUFFIX_MAP = {
+  // Shenzhen
+  'SZE': 'SZ', 'SZSE': 'SZ', 'SZ': 'SZ',
+  // Shanghai
+  'SSE': 'SS', 'SHA': 'SS', 'SH': 'SS', 'SS': 'SS',
+  // Hong Kong
+  'HKG': 'HK', 'HKEX': 'HK', 'HK': 'HK'
+};
+
 function normalizeSymbol(ticker) {
-  const exchangeCodes = new Set(['NYS', 'NYQ', 'NAS', 'ASE', 'PCX', 'PINK', 'OTC', 'NYSE', 'NASDAQ']);
   const dotIdx = ticker.lastIndexOf('.');
-  if (dotIdx !== -1 && exchangeCodes.has(ticker.slice(dotIdx + 1).toUpperCase())) {
-    return ticker.slice(0, dotIdx).toUpperCase();
-  }
-  return ticker.toUpperCase();
+  if (dotIdx === -1) return ticker.toUpperCase();
+
+  const base   = ticker.slice(0, dotIdx).toUpperCase();
+  const suffix = ticker.slice(dotIdx + 1).toUpperCase();
+
+  if (US_EXCHANGE_CODES.has(suffix))  return base;               // strip US suffix
+  if (SUFFIX_MAP[suffix])             return `${base}.${SUFFIX_MAP[suffix]}`;  // remap
+  return `${base}.${suffix}`;                                    // pass through (.HK, .L, etc.)
 }
 
 function dateToRange(dateStr) {
