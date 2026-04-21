@@ -40,6 +40,13 @@ const SUFFIX_MAP = {
 };
 
 function normalizeSymbol(ticker) {
+  // Auto-detect bare 6-digit Chinese codes: 0/3xxxxx → SZ,  6/9xxxxx → SS
+  if (/^\d{6}$/.test(ticker)) {
+    const c = ticker[0];
+    if (c === '0' || c === '3') return ticker + '.SZ';
+    if (c === '6' || c === '9') return ticker + '.SS';
+  }
+
   const dotIdx = ticker.lastIndexOf('.');
   if (dotIdx === -1) return ticker.toUpperCase();
 
