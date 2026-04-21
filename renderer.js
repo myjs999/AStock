@@ -68,6 +68,23 @@ function applyMarketTZ(symbol) {
   setChartTZ('America/New_York', 'Times in ET (New York)');
 }
 
+// ── Market color scheme (CN: red=up, green=down) ────────────
+const SCHEMES = {
+  default: { up: '#26a69a', down: '#ef5350' },
+  cn:      { up: '#ef5350', down: '#26a69a' },
+};
+let colors = SCHEMES.default;
+
+function applyMarketColors(symbol) {
+  colors = /\.(SZ|SS)$/i.test(symbol) ? SCHEMES.cn : SCHEMES.default;
+  candleSeries.applyOptions({
+    upColor:       colors.up,
+    downColor:     colors.down,
+    wickUpColor:   colors.up,
+    wickDownColor: colors.down,
+  });
+}
+
 const chart = LightweightCharts.createChart(chartEl, {
   autoSize: true,
   ...tzTimeFormatters(),
@@ -197,8 +214,9 @@ async function load() {
   }
   showHint(hints.join('  ·  '));
 
-  // update chart timezone to match the market
+  // update chart timezone and color scheme to match the market
   applyMarketTZ(result.symbol);
+  applyMarketColors(result.symbol);
 
   // render candles + volume
   candleMap.clear();
@@ -208,7 +226,7 @@ async function load() {
   volumeSeries.setData(result.candles.map(c => ({
     time:  c.time,
     value: c.volume,
-    color: c.close >= c.open ? '#26a69a55' : '#ef535055'
+    color: c.close >= c.open ? colors.up + '88' : colors.down + '88'
   })));
   chart.timeScale().fitContent();
 
@@ -223,7 +241,8 @@ async function load() {
   sbSym.textContent   = result.symbol;
   sbPrice.textContent = fmt(last);
   sbChg.textContent   = `${sign}${fmt(diff)} (${sign}${pct}%)`;
-  sbChg.className     = `chg ${diff >= 0 ? 'up' : 'down'}`;
+  sbChg.className     = 'chg';
+  sbChg.style.color   = diff >= 0 ? colors.up : colors.down;
   sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
 
   [sbSym, sbPrice, sbChg, sbExch].forEach(el => el.classList.remove('hidden'));
