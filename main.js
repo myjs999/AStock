@@ -223,6 +223,16 @@ function parseYahooResponse(body, symbol) {
     return { error: 'No trading data for this date (market closed or holiday)' };
   }
 
+  const meta = result.meta;
+
+  // Per-exchange lunch-break / off-hours filters (UTC seconds-of-day)
+  // China A-shares: lunch 11:30–13:00 CST = 03:30–05:00 UTC (12600–18000)
+  const BREAK_FILTERS = {
+    SHZ: ts => { const s = ts % 86400; return s >= 12600 && s < 18000; },
+    SHH: ts => { const s = ts % 86400; return s >= 12600 && s < 18000; },
+  };
+  const inBreak = BREAK_FILTERS[meta.exchangeName] ?? (() => false);
+
   const candles = timestamps
     .map((ts, i) => ({
       time:   ts,
@@ -233,11 +243,11 @@ function parseYahooResponse(body, symbol) {
       volume: quote.volume[i] ?? 0
     }))
     .filter(c => c.open != null && c.high != null && c.low != null && c.close != null)
+    .filter(c => !inBreak(c.time))
     .sort((a, b) => a.time - b.time);
 
   if (!candles.length) return { error: 'No valid bars — market was likely closed this day' };
 
-  const meta = result.meta;
   return {
     symbol:       meta.symbol ?? symbol,
     currency:     meta.currency ?? 'USD',
