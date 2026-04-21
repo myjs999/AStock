@@ -65,6 +65,25 @@ body {
 
 #ticker-input::placeholder { color: #4c525e; text-transform: none; }
 
+.nav-btn {
+  background: #131722;
+  border: 1px solid #2a2e39;
+  color: #787b86;
+  border-radius: 4px;
+  width: 26px;
+  height: 28px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.nav-btn:hover  { border-color: #2962ff; color: #d1d4dc; }
+.nav-btn:active { background: #1e222d; }
+
 #load-btn {
   background: #2962ff;
   color: #fff;

@@ -331,11 +331,48 @@ wlAddDate.addEventListener('click',   () => wlAdd('date'));
 
 wlInit();
 
-// Tab anywhere → jump to ticker input
+// ── Date navigation ─────────────────────────────────────
+function shiftTradingDay(dateStr, dir) {
+  const s = dateStr.replace(/-/g, '');
+  if (s.length !== 8) return dateStr;
+  let d = new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T12:00:00Z`);
+  do { d.setUTCDate(d.getUTCDate() + dir); }
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6);  // skip weekends
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+function goToday() {
+  dateInput.value = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  load();
+}
+
+function navDate(dir) {
+  dateInput.value = shiftTradingDay(dateInput.value, dir);
+  load();
+}
+
+document.getElementById('prev-date').addEventListener('click', () => navDate(-1));
+document.getElementById('next-date').addEventListener('click', () => navDate(+1));
+
+// ── Keyboard shortcuts ───────────────────────────────────
+// Tab      → focus ticker input
+// ← / →    → prev / next trading day
+// T        → jump to today
+// R        → reload current chart
 document.addEventListener('keydown', e => {
+  const inInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+
   if (e.key === 'Tab') {
     e.preventDefault();
     tickerInput.focus();
     tickerInput.select();
+    return;
   }
+
+  if (inInput) return;
+
+  if (e.key === 'ArrowLeft')            { e.preventDefault(); navDate(-1); }
+  else if (e.key === 'ArrowRight')      { e.preventDefault(); navDate(+1); }
+  else if (e.key === 't' || e.key === 'T') goToday();
+  else if (e.key === 'r' || e.key === 'R') load();
 });
