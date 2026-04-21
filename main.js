@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net } = require('electron');
+const { app, BrowserWindow, ipcMain, net, Menu } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -384,8 +384,10 @@ ipcMain.handle('fetch-stock-info', async (_event, { ticker }) => {
   }
 });
 
+let mainWindow = null;
+
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
@@ -397,7 +399,60 @@ function createWindow() {
       nodeIntegration: false
     }
   });
-  win.loadFile('index.html');
+  mainWindow.loadFile('index.html');
+  mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// ── Application menu ────────────────────────────────────────
+function buildMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [{ role: 'quit' }]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Keyboard Shortcuts',
+          accelerator: 'F1',
+          click: () => mainWindow?.webContents.send('show-help')
+        }
+      ]
+    }
+  ];
+
+  if (process.platform === 'darwin') {
+    template.unshift({
+      label: app.name,
+      submenu: [
+        { role: 'about' }, { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' }, { role: 'quit' }
+      ]
+    });
+  }
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // ── Watchlist persistence ───────────────────────────────────
@@ -420,5 +475,5 @@ ipcMain.handle('watchlist-save', (_e, data) => {
   } catch { return false; }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => { buildMenu(); createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

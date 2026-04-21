@@ -9,3 +9,7 @@ contextBridge.exposeInMainWorld('watchlistAPI', {
   load: ()     => ipcRenderer.invoke('watchlist-load'),
   save: (data) => ipcRenderer.invoke('watchlist-save', data)
 });
+
+contextBridge.exposeInMainWorld('appAPI', {
+  onShowHelp: (cb) => ipcRenderer.on('show-help', cb)
+});

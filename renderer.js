@@ -354,25 +354,47 @@ function navDate(dir) {
 document.getElementById('prev-date').addEventListener('click', () => navDate(-1));
 document.getElementById('next-date').addEventListener('click', () => navDate(+1));
 
+// ── Help modal ──────────────────────────────────────────
+const helpModal = document.getElementById('help-modal');
+
+function showHelp() { helpModal.classList.remove('hidden'); }
+function hideHelp() { helpModal.classList.add('hidden'); }
+
+document.getElementById('help-btn').addEventListener('click', showHelp);
+document.getElementById('help-close').addEventListener('click', hideHelp);
+helpModal.addEventListener('click', e => { if (e.target === helpModal) hideHelp(); });
+
+// triggered from main process via Help menu / F1
+window.appAPI.onShowHelp(showHelp);
+
 // ── Keyboard shortcuts ───────────────────────────────────
-// Tab      → focus ticker input
-// ← / →    → prev / next trading day
+// Tab      → cycle focus: ticker ↔ date
+// ← / →    → prev / next trading day  (when not in input)
 // T        → jump to today
 // R        → reload current chart
+// ? / F1   → show help
+// Esc      → close help
 document.addEventListener('keydown', e => {
-  const inInput = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  const active   = document.activeElement;
+  const inInput  = ['INPUT', 'SELECT', 'TEXTAREA'].includes(active?.tagName);
+  const helpOpen = !helpModal.classList.contains('hidden');
 
+  // Esc closes help
+  if (e.key === 'Escape') { if (helpOpen) { e.preventDefault(); hideHelp(); } return; }
+
+  // Tab cycles ticker ↔ date
   if (e.key === 'Tab') {
     e.preventDefault();
-    tickerInput.focus();
-    tickerInput.select();
+    if (active === tickerInput) { dateInput.focus(); dateInput.select(); }
+    else                        { tickerInput.focus(); tickerInput.select(); }
     return;
   }
 
-  if (inInput) return;
+  if (helpOpen || inInput) return;
 
-  if (e.key === 'ArrowLeft')            { e.preventDefault(); navDate(-1); }
-  else if (e.key === 'ArrowRight')      { e.preventDefault(); navDate(+1); }
-  else if (e.key === 't' || e.key === 'T') goToday();
-  else if (e.key === 'r' || e.key === 'R') load();
+  if      (e.key === 'ArrowLeft')              { e.preventDefault(); navDate(-1); }
+  else if (e.key === 'ArrowRight')             { e.preventDefault(); navDate(+1); }
+  else if (e.key === 't' || e.key === 'T')     goToday();
+  else if (e.key === 'r' || e.key === 'R')     load();
+  else if (e.key === '?' || e.key === 'F1')    { e.preventDefault(); showHelp(); }
 });

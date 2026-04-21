@@ -303,4 +303,65 @@ body {
 #statusbar .exch { margin-left: auto; }
 #statusbar .utc-note { color: #4c525e; font-size: 11px; }
 
+/* ── Help modal ───────────────────────────────────────── */
+#help-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+#help-box {
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  padding: 18px 22px 14px;
+  min-width: 300px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+#help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d1d4dc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#help-close {
+  background: none;
+  border: none;
+  color: #787b86;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+#help-close:hover { color: #d1d4dc; }
+
+#help-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+#help-table tr { border-radius: 3px; }
+#help-table tr:hover td { background: #232736; }
+#help-table td {
+  padding: 6px 8px;
+  font-size: 13px;
+  color: #d1d4dc;
+}
+#help-table td:first-child {
+  font-family: 'Consolas', 'Courier New', monospace;
+  color: #2962ff;
+  white-space: nowrap;
+  padding-right: 20px;
+}
+
 .hidden { display: none !important; }

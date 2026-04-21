@@ -25,6 +25,7 @@
     <button id="load-btn">Load</button>
     <span id="error-msg"></span>
     <span id="hint-msg"></span>
+    <button class="nav-btn" id="help-btn" title="Keyboard Shortcuts (? or F1)" style="margin-left:auto">?</button>
   </div>
 
   <div id="info-strip" class="hidden">
@@ -70,6 +71,24 @@
     <span class="chg hidden"   id="sb-chg"></span>
     <span class="exch hidden"  id="sb-exch"></span>
     <span class="utc-note">Times in ET (New York)</span>
+  </div>
+
+  <!-- Help modal -->
+  <div id="help-modal" class="hidden">
+    <div id="help-box">
+      <div id="help-header">
+        <span>Keyboard Shortcuts</span>
+        <button id="help-close">&#x2715;</button>
+      </div>
+      <table id="help-table">
+        <tr><td>&#8592; &nbsp;/&nbsp; &#8594;</td><td>Previous / next trading day</td></tr>
+        <tr><td>T</td><td>Jump to today</td></tr>
+        <tr><td>R</td><td>Reload current chart</td></tr>
+        <tr><td>Tab</td><td>Cycle focus: Ticker &#8596; Date</td></tr>
+        <tr><td>? &nbsp;/&nbsp; F1</td><td>Show this help</td></tr>
+        <tr><td>Esc</td><td>Close this dialog</td></tr>
+      </table>
+    </div>
   </div>
 
   <script src="./node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
