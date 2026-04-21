@@ -249,11 +249,15 @@ function parseYahooResponse(body, symbol) {
   if (!candles.length) return { error: 'No valid bars — market was likely closed this day' };
 
   return {
-    symbol:       meta.symbol ?? symbol,
-    currency:     meta.currency ?? 'USD',
-    exchangeName: meta.exchangeName ?? '',
-    prevClose:    meta.chartPreviousClose ?? meta.previousClose ?? null,
-    interval:     meta.dataGranularity ?? '',
+    symbol:           meta.symbol ?? symbol,
+    currency:         meta.currency ?? 'USD',
+    exchangeName:     meta.exchangeName ?? '',
+    fullExchangeName: meta.fullExchangeName ?? '',
+    prevClose:        meta.chartPreviousClose ?? meta.previousClose ?? null,
+    interval:         meta.dataGranularity ?? '',
+    longName:         meta.longName ?? meta.shortName ?? '',
+    fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
+    fiftyTwoWeekLow:  meta.fiftyTwoWeekLow  ?? null,
     candles
   };
 }

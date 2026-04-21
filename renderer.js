@@ -171,7 +171,8 @@ async function load() {
   loadBtn.disabled = false;
   loadBtn.textContent = 'Load';
 
-  // show listing/delisting info regardless of chart success
+  // show listing/delisting info
+  // stockanalysis covers US stocks; for CN/others fall back to Yahoo's longName
   if (!info.error) {
     const parts = [info.name ? `${info.name} (${info.symbol})` : info.symbol];
     if (info.exchange)   parts.push(info.exchange);
@@ -185,6 +186,11 @@ async function load() {
       infoDelisted.style.display = 'none';
     }
     infoText.textContent = parts.join('  ·  ');
+    infoStrip.classList.remove('hidden');
+  } else if (!result.error && result.longName) {
+    // Yahoo chart meta has the name (works for CN, HK, etc.)
+    infoText.textContent       = `${result.longName}  ·  ${result.symbol}`;
+    infoDelisted.style.display = 'none';
     infoStrip.classList.remove('hidden');
   }
 
@@ -230,7 +236,7 @@ async function load() {
   })));
   chart.timeScale().fitContent();
 
-  // status bar
+  // status bar + stats panel
   const last  = result.candles.at(-1).close;
   const first = result.candles[0].open;
   const prev  = result.prevClose ?? first;
@@ -246,6 +252,47 @@ async function load() {
   sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
 
   [sbSym, sbPrice, sbChg, sbExch].forEach(el => el.classList.remove('hidden'));
+
+  updateStatsPanel(result);
+}
+
+function updateStatsPanel(result) {
+  const cs = result.candles;
+  const dayO = cs[0].open;
+  const dayH = Math.max(...cs.map(c => c.high));
+  const dayL = Math.min(...cs.map(c => c.low));
+  const dayC = cs[cs.length - 1].close;
+  const dayV = cs.reduce((s, c) => s + c.volume, 0);
+  const prev = result.prevClose ?? dayO;
+  const diff = dayC - prev;
+  const pct  = ((diff / prev) * 100).toFixed(2);
+  const sign = diff >= 0 ? '+' : '';
+
+  document.getElementById('sp-name').textContent  = result.longName || result.symbol;
+  document.getElementById('sp-exch').textContent  = `${result.fullExchangeName || result.exchangeName}  ·  ${result.currency}`;
+  document.getElementById('sp-open').textContent  = fmt(dayO);
+  document.getElementById('sp-high').textContent  = fmt(dayH);
+  document.getElementById('sp-low').textContent   = fmt(dayL);
+  document.getElementById('sp-close').textContent = fmt(dayC);
+  document.getElementById('sp-vol').textContent   = fmtVol(dayV);
+  document.getElementById('sp-prev').textContent  = fmt(prev);
+
+  const chgEl = document.getElementById('sp-chg');
+  chgEl.textContent = `${sign}${fmt(diff)}  (${sign}${pct}%)`;
+  chgEl.style.color = diff >= 0 ? colors.up : colors.down;
+
+  const h52 = document.getElementById('sp-52h');
+  const l52 = document.getElementById('sp-52l');
+  h52.textContent = result.fiftyTwoWeekHigh != null ? fmt(result.fiftyTwoWeekHigh) : '—';
+  l52.textContent = result.fiftyTwoWeekLow  != null ? fmt(result.fiftyTwoWeekLow)  : '—';
+
+  // flip hi/lo colors for CN market
+  const hiColor = colors.up === '#ef5350' ? '#ef5350' : '#26a69a';
+  const loColor = colors.up === '#ef5350' ? '#26a69a' : '#ef5350';
+  document.querySelectorAll('.sp-hi').forEach(el => el.style.color = hiColor);
+  document.querySelectorAll('.sp-lo').forEach(el => el.style.color = loColor);
+
+  document.getElementById('stats-panel').classList.remove('hidden');
 }
 
 function fmt(n) { return n == null ? '—' : n.toFixed(2); }
