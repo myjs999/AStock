@@ -1,8 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('stockAPI', {
-  fetchStock:     (ticker, date, interval) => ipcRenderer.invoke('fetch-stock',      { ticker, date, interval }),
-  fetchStockInfo: (ticker)               => ipcRenderer.invoke('fetch-stock-info', { ticker })
+  fetchStock:      (ticker, date, interval)         => ipcRenderer.invoke('fetch-stock',       { ticker, date, interval }),
+  fetchStockInfo:  (ticker)                         => ipcRenderer.invoke('fetch-stock-info',  { ticker }),
+  fetchStockRange: (ticker, startDate, endDate)     => ipcRenderer.invoke('fetch-stock-range', { ticker, startDate, endDate }),
 });
 
 contextBridge.exposeInMainWorld('watchlistAPI', {

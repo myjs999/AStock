@@ -326,6 +326,13 @@ body {
   font-family: 'Consolas', 'Courier New', monospace;
 }
 
+#sp-pred-note {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #4c525e;
+  line-height: 1.4;
+}
+
 /* ── Chart area ───────────────────────────────────────── */
 #chart-wrap {
   flex: 1;
@@ -435,5 +442,46 @@ body {
   white-space: nowrap;
   padding-right: 20px;
 }
+
+/* ── Mode toggle & period buttons ────────────────────── */
+#mode-toggle {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.mode-btn {
+  background: #131722;
+  border: 1px solid #2a2e39;
+  color: #787b86;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.mode-btn:hover  { border-color: #2962ff; color: #d1d4dc; }
+.mode-btn.active { background: #2962ff; border-color: #2962ff; color: #fff; }
+
+#period-btns {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.period-btn {
+  background: #131722;
+  border: 1px solid #2a2e39;
+  color: #787b86;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.period-btn:hover  { border-color: #2962ff; color: #d1d4dc; }
+.period-btn.active { background: #2962ff; border-color: #2962ff; color: #fff; }
 
 .hidden { display: none !important; }

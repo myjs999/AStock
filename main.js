@@ -393,6 +393,29 @@ ipcMain.handle('fetch-stock-info', async (_event, { ticker }) => {
 
 let mainWindow = null;
 
+// ── Daily range fetch ───────────────────────────────────────
+ipcMain.handle('fetch-stock-range', async (_event, { ticker, startDate, endDate }) => {
+  try {
+    const symbol = normalizeSymbol(ticker);
+    const fmt    = d => `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;
+    const start  = Math.floor(new Date(`${fmt(startDate)}T00:00:00Z`).getTime() / 1000);
+    const end    = Math.floor(new Date(`${fmt(endDate)}T23:59:59Z`).getTime()   / 1000);
+
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}` +
+      `?interval=1d&period1=${start}&period2=${end}&includePrePost=false`;
+    const resp = await netGet(url);
+    const result = parseYahooResponse(resp.body, symbol);
+    if (!result.error) {
+      result.source    = 'Yahoo Finance';
+      result.startDate = startDate;
+      result.endDate   = endDate;
+    }
+    return result;
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,

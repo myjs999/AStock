@@ -123,9 +123,13 @@ chart.priceScale('vol').applyOptions({
 const candleMap = new Map();
 const volMap    = new Map();
 
+// track last hovered candle time (used by double-click drill-down)
+let lastHoveredTime = null;
+
 // crosshair tooltip in status bar
 chart.subscribeCrosshairMove(param => {
   if (!param.time) return;
+  lastHoveredTime = param.time;
   const c = candleMap.get(param.time);
   if (!c) return;
   const v      = volMap.get(param.time);
@@ -133,8 +137,165 @@ chart.subscribeCrosshairMove(param => {
   sbPrice.textContent = `O ${fmt(c.open)}  H ${fmt(c.high)}  L ${fmt(c.low)}  C ${fmt(c.close)}${volStr}`;
 });
 
+// Pick the finest Yahoo-supported interval for a given date
+function bestInterval(dateStr) {
+  const date = new Date(`${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}T12:00:00Z`);
+  const days = (Date.now() - date.getTime()) / 86400000;
+  if (days <=   7) return '1m';
+  if (days <=  60) return '2m';
+  if (days <= 730) return '60m';
+  return '1d';
+}
+
+// Right-click on chart → toggle Intraday / Daily (same as Tab)
+chartEl.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  setMode(currentMode === 'intraday' ? 'daily' : 'intraday');
+  load();
+});
+
+// Double-click on daily chart → drill into intraday for that date
+chartEl.addEventListener('dblclick', () => {
+  if (currentMode !== 'daily' || !lastHoveredTime) return;
+  const d       = new Date(lastHoveredTime * 1000);
+  const dateStr = d.toISOString().slice(0, 10).replace(/-/g, '');
+  dateInput.value      = dateStr;
+  intervalSelect.value = bestInterval(dateStr);
+  setMode('intraday');
+  load();
+});
+
+// ── Mode state ───────────────────────────────────────────────
+let currentMode   = 'intraday';
+let currentPeriod = '6M';
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('mode-intraday').classList.toggle('active', mode === 'intraday');
+  document.getElementById('mode-daily').classList.toggle('active',    mode === 'daily');
+  const isDaily = mode === 'daily';
+  intervalSelect.classList.toggle('hidden',  isDaily);
+  document.getElementById('period-btns').classList.toggle('hidden', !isDaily);
+  document.getElementById('prev-date').classList.toggle('hidden',   isDaily);
+  document.getElementById('next-date').classList.toggle('hidden',   isDaily);
+  dateInput.classList.toggle('hidden', isDaily);
+}
+
+function computeStartDate(endDateStr, period) {
+  const y = parseInt(endDateStr.slice(0, 4), 10);
+  const m = parseInt(endDateStr.slice(4, 6), 10) - 1;
+  const d = parseInt(endDateStr.slice(6, 8), 10);
+  const dt = new Date(y, m, d);
+  switch (period) {
+    case '1W': dt.setDate(dt.getDate() - 7);          break;
+    case '3M': dt.setMonth(dt.getMonth() - 3);        break;
+    case '6M': dt.setMonth(dt.getMonth() - 6);        break;
+    case '1Y': dt.setFullYear(dt.getFullYear() - 1);  break;
+    case '3Y': dt.setFullYear(dt.getFullYear() - 3);  break;
+    case '5Y': dt.setFullYear(dt.getFullYear() - 5);  break;
+    default:   dt.setMonth(dt.getMonth() - 3);
+  }
+  return dt.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+async function loadDaily() {
+  const ticker = tickerInput.value.trim();
+  if (!ticker) { showError('Enter a ticker symbol.'); return; }
+
+  showError('');
+  showHint('');
+  infoStrip.classList.add('hidden');
+  loadBtn.disabled = true;
+  loadBtn.textContent = 'Loading…';
+  placeholder.classList.add('hidden');
+
+  const endDate   = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const startDate = computeStartDate(endDate, currentPeriod);
+
+  const [result, info] = await Promise.all([
+    stockAPI.fetchStockRange(ticker, startDate, endDate),
+    stockAPI.fetchStockInfo(ticker)
+  ]);
+
+  loadBtn.disabled = false;
+  loadBtn.textContent = 'Load';
+
+  if (!info.error) {
+    const parts = [info.name ? `${info.name} (${info.symbol})` : info.symbol];
+    if (info.exchange) parts.push(info.exchange);
+    if (info.isDelisted) {
+      infoDelisted.textContent   = 'DELISTED';
+      infoDelisted.style.display = '';
+    } else {
+      infoDelisted.style.display = 'none';
+    }
+    infoText.textContent = parts.join('  ·  ');
+    infoStrip.classList.remove('hidden');
+  } else if (!result.error && result.longName) {
+    infoText.textContent       = `${result.longName}  ·  ${result.symbol}`;
+    infoDelisted.style.display = 'none';
+    infoStrip.classList.remove('hidden');
+  }
+
+  if (result.error) {
+    candleSeries.setData([]);
+    volumeSeries.setData([]);
+    candleMap.clear();
+    volMap.clear();
+    showError(result.error);
+    placeholder.classList.remove('hidden');
+    return;
+  }
+
+  applyMarketTZ(result.symbol);
+
+  candleMap.clear();
+  volMap.clear();
+  result.candles.forEach(c => { candleMap.set(c.time, c); volMap.set(c.time, c.volume); });
+  candleSeries.setData(result.candles);
+  volumeSeries.setData(result.candles.map(c => ({
+    time:  c.time,
+    value: c.volume,
+    color: c.close >= c.open ? colors.up + '88' : colors.down + '88'
+  })));
+  chart.timeScale().fitContent();
+
+  const last  = result.candles.at(-1).close;
+  const first = result.candles[0].open;
+  const prev  = result.prevClose ?? first;
+  const diff  = last - prev;
+  const pct   = ((diff / prev) * 100).toFixed(2);
+  const sign  = diff >= 0 ? '+' : '';
+
+  sbSym.textContent   = result.symbol;
+  sbPrice.textContent = fmt(last);
+  sbChg.textContent   = `${sign}${fmt(diff)} (${sign}${pct}%)`;
+  sbChg.className     = 'chg';
+  sbChg.style.color   = diff >= 0 ? colors.up : colors.down;
+  sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
+  [sbSym, sbPrice, sbChg, sbExch].forEach(el => el.classList.remove('hidden'));
+
+  updateStatsPanel(result, 'daily');
+  updatePrediction(ticker);
+}
+
+// Mode toggle buttons
+document.getElementById('mode-intraday').addEventListener('click', () => setMode('intraday'));
+document.getElementById('mode-daily').addEventListener('click',    () => setMode('daily'));
+
+// Period buttons
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentPeriod = btn.dataset.period;
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (currentMode === 'daily') loadDaily();
+  });
+});
+
 // ── Load action ────────────────────────────────────────────────
 async function load() {
+  if (currentMode === 'daily') { loadDaily(); return; }
   const ticker = tickerInput.value.trim();
   const date   = dateInput.value.trim().replace(/-/g, '');  // YYYYMMDD
 
@@ -238,10 +399,15 @@ async function load() {
 
   [sbSym, sbPrice, sbChg, sbExch].forEach(el => el.classList.remove('hidden'));
 
-  updateStatsPanel(result);
+  updateStatsPanel(result, 'intraday');
+  updatePrediction(ticker);
 }
 
-function updateStatsPanel(result) {
+function updateStatsPanel(result, mode) {
+  // update section label: "DAY" for intraday, "LATEST" for daily
+  const dayLabelEl = document.querySelector('#stats-panel .sp-section');
+  if (dayLabelEl) dayLabelEl.textContent = mode === 'daily' ? 'LATEST' : 'DAY';
+
   const cs = result.candles;
   const dayO = cs[0].open;
   const dayH = Math.max(...cs.map(c => c.high));
@@ -273,6 +439,100 @@ function updateStatsPanel(result) {
 
   document.getElementById('sp-source').textContent = result.source || '—';
   document.getElementById('stats-panel').classList.remove('hidden');
+}
+
+// ── Prediction helpers ────────────────────────────────────────
+function linearRegression(values) {
+  const n    = values.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX  += i;  sumY  += values[i];
+    sumXY += i * values[i];  sumX2 += i * i;
+  }
+  const slope     = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept, predict: xi => intercept + slope * xi };
+}
+
+function computeRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) avgGain += d; else avgLoss -= d;
+  }
+  avgGain /= period;  avgLoss /= period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(d, 0))  / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+  }
+  return avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+}
+
+async function updatePrediction(ticker) {
+  const priceEl = document.getElementById('sp-pred-price');
+  const chgEl   = document.getElementById('sp-pred-chg');
+  const trendEl = document.getElementById('sp-sig-trend');
+  const rsiEl   = document.getElementById('sp-sig-rsi');
+  const maEl    = document.getElementById('sp-sig-ma');
+  const noteEl  = document.getElementById('sp-pred-note');
+
+  priceEl.textContent = '…';
+  chgEl.textContent   = '';
+  trendEl.textContent = '…';  trendEl.style.color = '';
+  rsiEl.textContent   = '…';  rsiEl.style.color   = '';
+  maEl.textContent    = '…';  maEl.style.color    = '';
+  noteEl.textContent  = '';
+
+  const endDate   = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const startDate = computeStartDate(endDate, '6M');
+  const result    = await stockAPI.fetchStockRange(ticker, startDate, endDate);
+
+  if (result.error || !result.candles || result.candles.length < 15) {
+    priceEl.textContent = '—';
+    chgEl.textContent   = '';
+    [trendEl, rsiEl, maEl].forEach(el => { el.textContent = '—'; el.style.color = ''; });
+    return;
+  }
+
+  const closes = result.candles.map(c => c.close);
+  const last   = closes[closes.length - 1];
+  const n      = closes.length;
+
+  // Linear regression on last 30 closes
+  const window30 = closes.slice(-30);
+  const lr       = linearRegression(window30);
+  const pred     = lr.predict(window30.length);   // extrapolate one step forward
+  const diff     = pred - last;
+  const pct      = ((diff / last) * 100).toFixed(2);
+  const sign     = diff >= 0 ? '+' : '';
+
+  priceEl.textContent = fmt(pred);
+  chgEl.textContent   = `${sign}${fmt(diff)} (${sign}${pct}%)`;
+  chgEl.style.color   = diff >= 0 ? colors.up : colors.down;
+
+  // Trend: slope normalised as %/day
+  const slopePct = (lr.slope / last) * 100;
+  if      (slopePct >  0.1) { trendEl.textContent = '↑ Bull';    trendEl.style.color = colors.up;   }
+  else if (slopePct < -0.1) { trendEl.textContent = '↓ Bear';    trendEl.style.color = colors.down; }
+  else                      { trendEl.textContent = '→ Neutral'; trendEl.style.color = '#787b86';   }
+
+  // RSI(14)
+  const rsi = computeRSI(closes);
+  if (rsi !== null) {
+    rsiEl.textContent = rsi.toFixed(1);
+    rsiEl.style.color = rsi > 70 ? colors.down : rsi < 30 ? colors.up : '#787b86';
+  } else {
+    rsiEl.textContent = '—';
+  }
+
+  // MA20 vs last close
+  const ma20 = closes.slice(-20).reduce((s, v) => s + v, 0) / Math.min(20, n);
+  if (last > ma20) { maEl.textContent = '↑ Above'; maEl.style.color = colors.up;   }
+  else             { maEl.textContent = '↓ Below'; maEl.style.color = colors.down; }
+
+  noteEl.textContent = `Linear reg. · ${window30.length}d`;
 }
 
 function fmt(n) { return n == null ? '—' : n.toFixed(2); }
@@ -374,7 +634,9 @@ function goToday() {
 }
 
 function navDate(dir) {
-  dateInput.value = shiftTradingDay(dateInput.value, dir);
+  const newDate        = shiftTradingDay(dateInput.value, dir);
+  dateInput.value      = newDate;
+  intervalSelect.value = bestInterval(newDate);
   load();
 }
 
@@ -391,37 +653,73 @@ document.getElementById('help-btn').addEventListener('click', showHelp);
 document.getElementById('help-close').addEventListener('click', hideHelp);
 helpModal.addEventListener('click', e => { if (e.target === helpModal) hideHelp(); });
 
-// triggered from main process via Help menu / F1
+// triggered from main process via Help menu
 window.appAPI.onShowHelp(showHelp);
 
 // ── Keyboard shortcuts ───────────────────────────────────
-// Tab      → cycle focus: ticker ↔ date
+// Tab      → toggle Intraday / Daily mode
+// F1       → focus ticker input
+// F2       → focus date input  (intraday only)
+// F3       → focus interval select  /  cycle period button (daily)
 // ← / →    → prev / next trading day  (when not in input)
 // T        → jump to today
 // R        → reload current chart
-// ? / F1   → show help
+// ?        → show help
 // Esc      → close help
+
+function cyclePeriod() {
+  const periods  = ['1W', '3M', '6M', '1Y', '3Y', '5Y'];
+  const idx      = periods.indexOf(currentPeriod);
+  const next     = periods[(idx + 1) % periods.length];
+  currentPeriod  = next;
+  document.querySelectorAll('.period-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.period === next);
+  });
+  loadDaily();
+}
+
 document.addEventListener('keydown', e => {
   const active   = document.activeElement;
   const inInput  = ['INPUT', 'SELECT', 'TEXTAREA'].includes(active?.tagName);
   const helpOpen = !helpModal.classList.contains('hidden');
 
-  // Esc closes help
+  // Esc closes help (always)
   if (e.key === 'Escape') { if (helpOpen) { e.preventDefault(); hideHelp(); } return; }
 
-  // Tab cycles ticker ↔ date
+  // Tab toggles Intraday / Daily (always, even when focused in an input)
   if (e.key === 'Tab') {
     e.preventDefault();
-    if (active === tickerInput) { dateInput.focus(); dateInput.select(); }
-    else                        { tickerInput.focus(); tickerInput.select(); }
+    setMode(currentMode === 'intraday' ? 'daily' : 'intraday');
+    load();
     return;
+  }
+
+  // F1 / F2 / F3 work regardless of focus (but not when help is open)
+  if (!helpOpen) {
+    if (e.key === 'F1') {
+      e.preventDefault();
+      tickerInput.focus();
+      tickerInput.select();
+      return;
+    }
+    if (e.key === 'F2') {
+      e.preventDefault();
+      if (currentMode === 'intraday') { dateInput.focus(); dateInput.select(); }
+      return;
+    }
+    if (e.key === 'F3') {
+      e.preventDefault();
+      if (currentMode === 'intraday') intervalSelect.focus();
+      else                            cyclePeriod();
+      return;
+    }
   }
 
   if (helpOpen || inInput) return;
 
-  if      (e.key === 'ArrowLeft')              { e.preventDefault(); navDate(-1); }
-  else if (e.key === 'ArrowRight')             { e.preventDefault(); navDate(+1); }
-  else if (e.key === 't' || e.key === 'T')     goToday();
-  else if (e.key === 'r' || e.key === 'R')     load();
-  else if (e.key === '?' || e.key === 'F1')    { e.preventDefault(); showHelp(); }
+  if      (e.key === 'ArrowLeft')          { e.preventDefault(); navDate(-1); }
+  else if (e.key === 'ArrowRight')         { e.preventDefault(); navDate(+1); }
+  else if (e.key === 't' || e.key === 'T') goToday();
+  else if (e.key === 'r' || e.key === 'R') load();
+  else if (e.key === '?')                  { e.preventDefault(); showHelp(); }
 });

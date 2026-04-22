@@ -9,10 +9,17 @@
 
   <div id="toolbar">
     <h1>StockView</h1>
+
+    <div id="mode-toggle">
+      <button class="mode-btn active" id="mode-intraday">Intraday</button>
+      <button class="mode-btn"        id="mode-daily">Daily</button>
+    </div>
+
     <input id="ticker-input" type="text" placeholder="e.g. AAPL" spellcheck="false">
     <button class="nav-btn" id="prev-date" title="Previous trading day  (← arrow key)">&#8592;</button>
     <input id="date-input" type="text" placeholder="YYYYMMDD" maxlength="8" spellcheck="false">
     <button class="nav-btn" id="next-date" title="Next trading day  (→ arrow key)">&#8594;</button>
+
     <select id="interval-select">
       <option value="1m">1m  (last 7d)</option>
       <option value="2m">2m  (last 60d)</option>
@@ -22,10 +29,20 @@
       <option value="60m">1h  (last 2y)</option>
       <option value="1d">1d  (all time)</option>
     </select>
+
+    <div id="period-btns" class="hidden">
+      <button class="period-btn" data-period="1W">1W</button>
+      <button class="period-btn" data-period="3M">3M</button>
+      <button class="period-btn active" data-period="6M">6M</button>
+      <button class="period-btn" data-period="1Y">1Y</button>
+      <button class="period-btn" data-period="3Y">3Y</button>
+      <button class="period-btn" data-period="5Y">5Y</button>
+    </div>
+
     <button id="load-btn">Load</button>
     <span id="error-msg"></span>
     <span id="hint-msg"></span>
-    <button class="nav-btn" id="help-btn" title="Keyboard Shortcuts (? or F1)" style="margin-left:auto">?</button>
+    <button class="nav-btn" id="help-btn" title="Keyboard Shortcuts (?)" style="margin-left:auto">?</button>
   </div>
 
   <div id="info-strip" class="hidden">
@@ -83,6 +100,16 @@
       <div class="sp-divider"></div>
       <div class="sp-section">SOURCE</div>
       <div id="sp-source"></div>
+      <div class="sp-divider"></div>
+      <div class="sp-section">TOMORROW</div>
+      <div class="sp-row"><span class="sp-lbl">Price</span><span id="sp-pred-price">—</span></div>
+      <div class="sp-row sp-chg-row"><span id="sp-pred-chg"></span></div>
+      <div class="sp-divider"></div>
+      <div class="sp-section">SIGNALS</div>
+      <div class="sp-row"><span class="sp-lbl">Trend</span><span id="sp-sig-trend">—</span></div>
+      <div class="sp-row"><span class="sp-lbl">RSI 14</span><span id="sp-sig-rsi">—</span></div>
+      <div class="sp-row"><span class="sp-lbl">MA 20</span><span id="sp-sig-ma">—</span></div>
+      <div id="sp-pred-note"></div>
     </div>
 
   </div>
@@ -103,11 +130,14 @@
         <button id="help-close">&#x2715;</button>
       </div>
       <table id="help-table">
+        <tr><td>Tab</td><td>Toggle Intraday / Daily mode</td></tr>
+        <tr><td>F1</td><td>Focus ticker input</td></tr>
+        <tr><td>F2</td><td>Focus date input</td></tr>
+        <tr><td>F3</td><td>Focus interval  /  cycle period</td></tr>
         <tr><td>&#8592; &nbsp;/&nbsp; &#8594;</td><td>Previous / next trading day</td></tr>
         <tr><td>T</td><td>Jump to today</td></tr>
         <tr><td>R</td><td>Reload current chart</td></tr>
-        <tr><td>Tab</td><td>Cycle focus: Ticker &#8596; Date</td></tr>
-        <tr><td>? &nbsp;/&nbsp; F1</td><td>Show this help</td></tr>
+        <tr><td>?</td><td>Show this help</td></tr>
         <tr><td>Esc</td><td>Close this dialog</td></tr>
       </table>
     </div>
