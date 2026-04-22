@@ -320,6 +320,12 @@ body {
 .sp-hi { color: #26a69a; }
 .sp-lo { color: #ef5350; }
 
+#sp-source {
+  font-size: 11px;
+  color: #787b86;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
 /* ── Chart area ───────────────────────────────────────── */
 #chart-wrap {
   flex: 1;

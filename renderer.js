@@ -68,22 +68,8 @@ function applyMarketTZ(symbol) {
   setChartTZ('America/New_York', 'Times in ET (New York)');
 }
 
-// ── Market color scheme (CN: red=up, green=down) ────────────
-const SCHEMES = {
-  default: { up: '#26a69a', down: '#ef5350' },
-  cn:      { up: '#ef5350', down: '#26a69a' },
-};
-let colors = SCHEMES.default;
-
-function applyMarketColors(symbol) {
-  colors = /\.(SZ|SS)$/i.test(symbol) ? SCHEMES.cn : SCHEMES.default;
-  candleSeries.applyOptions({
-    upColor:       colors.up,
-    downColor:     colors.down,
-    wickUpColor:   colors.up,
-    wickDownColor: colors.down,
-  });
-}
+// ── Color scheme (single global scheme) ─────────────────────
+const colors = { up: '#26a69a', down: '#ef5350' };
 
 const chart = LightweightCharts.createChart(chartEl, {
   autoSize: true,
@@ -220,9 +206,8 @@ async function load() {
   }
   showHint(hints.join('  ·  '));
 
-  // update chart timezone and color scheme to match the market
+  // update chart timezone to match the market
   applyMarketTZ(result.symbol);
-  applyMarketColors(result.symbol);
 
   // render candles + volume
   candleMap.clear();
@@ -286,12 +271,7 @@ function updateStatsPanel(result) {
   h52.textContent = result.fiftyTwoWeekHigh != null ? fmt(result.fiftyTwoWeekHigh) : '—';
   l52.textContent = result.fiftyTwoWeekLow  != null ? fmt(result.fiftyTwoWeekLow)  : '—';
 
-  // flip hi/lo colors for CN market
-  const hiColor = colors.up === '#ef5350' ? '#ef5350' : '#26a69a';
-  const loColor = colors.up === '#ef5350' ? '#26a69a' : '#ef5350';
-  document.querySelectorAll('.sp-hi').forEach(el => el.style.color = hiColor);
-  document.querySelectorAll('.sp-lo').forEach(el => el.style.color = loColor);
-
+  document.getElementById('sp-source').textContent = result.source || '—';
   document.getElementById('stats-panel').classList.remove('hidden');
 }
 

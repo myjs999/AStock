@@ -141,6 +141,7 @@ async function fetchFromStooq(symbol, date) {
       exchangeName: '',
       prevClose:    null,
       interval:     '1d',
+      source:       'stooq',
       candles:      [candle],
       _fromStooq:   true,          // stripped before returning to renderer
       _stooqDate:   dateStr        // so caller can set adjustedDate if needed
@@ -196,6 +197,7 @@ async function fetchFromBarchart(symbol, date) {
       exchangeName: '',
       prevClose:    null,
       interval:     '1d',
+      source:       'Barchart',
       candles:      [candle],
       _fromStooq:   true,
       _stooqDate:   dateStr
@@ -258,6 +260,7 @@ function parseYahooResponse(body, symbol) {
     longName:         meta.longName ?? meta.shortName ?? '',
     fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
     fiftyTwoWeekLow:  meta.fiftyTwoWeekLow  ?? null,
+    source:           'Yahoo Finance',
     candles
   };
 }
