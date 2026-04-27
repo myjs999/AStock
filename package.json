@@ -1,7 +1,7 @@
 {
-  "name": "stocks-app",
+  "name": "astock",
   "version": "1.0.0",
-  "description": "Stock price viewer",
+  "description": "AStock — stock chart viewer",
   "main": "main.js",
   "dependencies": {
     "lightweight-charts": "^4.1.3"
