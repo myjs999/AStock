@@ -14,3 +14,16 @@ contextBridge.exposeInMainWorld('watchlistAPI', {
 contextBridge.exposeInMainWorld('appAPI', {
   onShowHelp: (cb) => ipcRenderer.on('show-help', cb)
 });
+
+contextBridge.exposeInMainWorld('orderbookAPI', {
+  fetch: (ticker) => ipcRenderer.invoke('fetch-orderbook', { ticker })
+});
+
+contextBridge.exposeInMainWorld('newsAPI', {
+  fetch:   (ticker) => ipcRenderer.invoke('fetch-news', { ticker }),
+  openUrl: (url)    => ipcRenderer.invoke('open-url', url)
+});
+
+contextBridge.exposeInMainWorld('companyAPI', {
+  fetch: (ticker) => ipcRenderer.invoke('fetch-company', { ticker })
+});

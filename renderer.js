@@ -15,7 +15,7 @@ const infoDelisted = document.getElementById('info-delisted');
 
 const sbSym   = document.getElementById('sb-sym');
 const sbPrice = document.getElementById('sb-price');
-const sbChg   = document.getElementById('sb-chg');
+const sbPct   = document.getElementById('sb-pct');
 const sbExch  = document.getElementById('sb-exch');
 
 tickerInput.value = 'AAPL';
@@ -119,12 +119,97 @@ chart.priceScale('vol').applyOptions({
   visible: false
 });
 
+// Cumulative volume line — sits in the same bottom strip as the volume bars
+const cumVolLine = chart.addLineSeries({
+  priceScaleId: 'cum-vol',
+  color: '#f0b429',
+  lineWidth: 1,
+  priceLineVisible: false,
+  lastValueVisible: false,
+  crosshairMarkerVisible: false,
+});
+chart.priceScale('cum-vol').applyOptions({
+  scaleMargins: { top: 0.82, bottom: 0 },
+  visible: false,
+});
+
+function buildCumVolData(candles) {
+  cumVolMap.clear();
+  cumValMap.clear();
+  let cumVol = 0, cumVal = 0;
+  return candles.map(c => {
+    cumVol += c.volume;
+    cumVal += c.close * c.volume;
+    cumVolMap.set(c.time, cumVol);
+    cumValMap.set(c.time, cumVal);
+    return { time: c.time, value: cumVol };
+  });
+}
+
 // own maps — avoids relying on param.seriesData which is unreliable across lw-charts v4 builds
-const candleMap = new Map();
-const volMap    = new Map();
+const candleMap  = new Map();
+const volMap     = new Map();
+const cumVolMap  = new Map();
+const cumValMap  = new Map();
+
+// ── Price lines (open / CN limits) ───────────────────────────
+let priceLines = [];   // active price line handles
+
+function clearPriceLines() {
+  priceLines.forEach(pl => { try { candleSeries.removePriceLine(pl); } catch {} });
+  priceLines = [];
+}
+
+function addPriceLine(price, color, title, style = LightweightCharts.LineStyle.Dashed) {
+  const pl = candleSeries.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, axisLabelColor: '#131722', title });
+  priceLines.push(pl);
+}
+
+// CN limit rules:
+//   STAR Market (688xxx.SS) and ChiNext (300xxx / 301xxx.SZ) → ±20%
+//   All other A-shares → ±10%
+function cnLimitPct(symbol) {
+  const up   = symbol.toUpperCase();
+  const code = up.split('.')[0];
+  if (up.endsWith('.SS') && code.startsWith('688')) return 0.20;  // STAR Market
+  if (up.endsWith('.SZ') && (code.startsWith('300') || code.startsWith('301'))) return 0.20;  // ChiNext
+  if (up.endsWith('.SS') || up.endsWith('.SZ')) return 0.10;      // regular A-share
+  return null;  // not CN
+}
+
+function pctLabel(price, base) {
+  if (!base) return '';
+  const p = ((price - base) / base * 100);
+  return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+}
+
+function applyPriceLines(result) {
+  clearPriceLines();
+  if (currentMode === 'daily') return;  // no price lines on daily chart
+
+  const prev = result.prevClose;
+  const open = result.candles?.[0]?.open;
+  if (!open) return;
+
+  // Opening price line — show % vs prev close
+  const openPct = prev ? pctLabel(open, prev) : '0%';
+  addPriceLine(open, '#ffffff', `Open  ${openPct}`, LightweightCharts.LineStyle.Dashed);
+
+  // CN limit-up / limit-down lines
+  if (prev) {
+    const limitPct = cnLimitPct(result.symbol);
+    if (limitPct !== null) {
+      const up   = parseFloat((prev * (1 + limitPct)).toFixed(2));
+      const down = parseFloat((prev * (1 - limitPct)).toFixed(2));
+      addPriceLine(up,   colors.up,   `+${limitPct * 100}%`, LightweightCharts.LineStyle.Solid);
+      addPriceLine(down, colors.down, `-${limitPct * 100}%`, LightweightCharts.LineStyle.Solid);
+    }
+  }
+}
 
 // track last hovered candle time (used by double-click drill-down)
 let lastHoveredTime = null;
+let lastPrevClose   = null;   // set on each load; used for crosshair % calculation
 
 // crosshair tooltip in status bar
 chart.subscribeCrosshairMove(param => {
@@ -132,9 +217,22 @@ chart.subscribeCrosshairMove(param => {
   lastHoveredTime = param.time;
   const c = candleMap.get(param.time);
   if (!c) return;
-  const v      = volMap.get(param.time);
-  const volStr = v != null ? `  V ${fmtVol(v)}` : '';
-  sbPrice.textContent = `O ${fmt(c.open)}  H ${fmt(c.high)}  L ${fmt(c.low)}  C ${fmt(c.close)}${volStr}`;
+  const v    = volMap.get(param.time);
+  const cumV = cumVolMap.get(param.time);
+  const cumA = cumValMap.get(param.time);
+  const barVal = (v != null) ? c.close * v : null;
+  const ohlc   = `O ${fmt(c.open)}  H ${fmt(c.high)}  L ${fmt(c.low)}  C ${fmt(c.close)}`;
+  const barStr = v    != null ? `  │  V ${fmtVol(v)}  Val ${fmtVol(barVal)}` : '';
+  const cumStr = cumV != null ? `  │  ΣV ${fmtVol(cumV)}  ΣVal ${fmtVol(cumA)}` : '';
+  sbPrice.textContent = ohlc + barStr + cumStr;
+  if (lastPrevClose) {
+    const diff = c.close - lastPrevClose;
+    const pct  = (diff / lastPrevClose * 100).toFixed(2);
+    const sign = diff >= 0 ? '+' : '';
+    sbPct.textContent = `${sign}${pct}%`;
+    sbPct.style.color = diff >= 0 ? colors.up : colors.down;
+    sbPct.classList.remove('hidden');
+  }
 });
 
 // Pick the finest Yahoo-supported interval for a given date
@@ -205,6 +303,7 @@ async function loadDaily() {
   showError('');
   showHint('');
   infoStrip.classList.add('hidden');
+  stopChartRefresh();
   loadBtn.disabled = true;
   loadBtn.textContent = 'Loading…';
   placeholder.classList.add('hidden');
@@ -240,8 +339,14 @@ async function loadDaily() {
   if (result.error) {
     candleSeries.setData([]);
     volumeSeries.setData([]);
+    cumVolLine.setData([]);
     candleMap.clear();
     volMap.clear();
+    sbPct.classList.add('hidden');
+    stopObPoll();
+    obActiveTicker = null;
+    obPanel.classList.add('hidden');
+    document.getElementById('si-wrap').classList.add('hidden');
     showError(result.error);
     placeholder.classList.remove('hidden');
     return;
@@ -252,31 +357,35 @@ async function loadDaily() {
   candleMap.clear();
   volMap.clear();
   result.candles.forEach(c => { candleMap.set(c.time, c); volMap.set(c.time, c.volume); });
+  chart.timeScale().resetTimeScale();
   candleSeries.setData(result.candles);
   volumeSeries.setData(result.candles.map(c => ({
     time:  c.time,
     value: c.volume,
     color: c.close >= c.open ? colors.up + '88' : colors.down + '88'
   })));
+  cumVolLine.setData(buildCumVolData(result.candles));
   chart.timeScale().fitContent();
+  applyPriceLines(result);
 
   const last  = result.candles.at(-1).close;
   const first = result.candles[0].open;
   const prev  = result.prevClose ?? first;
+  lastPrevClose = prev;
   const diff  = last - prev;
   const pct   = ((diff / prev) * 100).toFixed(2);
   const sign  = diff >= 0 ? '+' : '';
 
   sbSym.textContent   = result.symbol;
   sbPrice.textContent = fmt(last);
-  sbChg.textContent   = `${sign}${fmt(diff)} (${sign}${pct}%)`;
-  sbChg.className     = 'chg';
-  sbChg.style.color   = diff >= 0 ? colors.up : colors.down;
+  sbPct.classList.add('hidden');   // reset; crosshair will show it on hover
   sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
-  [sbSym, sbPrice, sbChg, sbExch].forEach(el => el.classList.remove('hidden'));
+  [sbSym, sbPrice, sbExch].forEach(el => el.classList.remove('hidden'));
 
   updateStatsPanel(result, 'daily');
   updatePrediction(ticker);
+  updateNews(ticker);
+  updateCompany(ticker);
 }
 
 // Mode toggle buttons
@@ -305,6 +414,7 @@ async function load() {
   showError('');
   showHint('');
   infoStrip.classList.add('hidden');
+  stopChartRefresh();
   loadBtn.disabled = true;
   loadBtn.textContent = 'Loading…';
   placeholder.classList.add('hidden');
@@ -344,8 +454,14 @@ async function load() {
   if (result.error) {
     candleSeries.setData([]);
     volumeSeries.setData([]);
+    cumVolLine.setData([]);
     candleMap.clear();
     volMap.clear();
+    sbPct.classList.add('hidden');
+    stopObPoll();
+    obActiveTicker = null;
+    obPanel.classList.add('hidden');
+    document.getElementById('si-wrap').classList.add('hidden');
     showError(result.error);
     placeholder.classList.remove('hidden');
     return;
@@ -374,33 +490,38 @@ async function load() {
   candleMap.clear();
   volMap.clear();
   result.candles.forEach(c => { candleMap.set(c.time, c); volMap.set(c.time, c.volume); });
+  chart.timeScale().resetTimeScale();
   candleSeries.setData(result.candles);
   volumeSeries.setData(result.candles.map(c => ({
     time:  c.time,
     value: c.volume,
     color: c.close >= c.open ? colors.up + '88' : colors.down + '88'
   })));
+  cumVolLine.setData(buildCumVolData(result.candles));
   chart.timeScale().fitContent();
+  applyPriceLines(result);
 
   // status bar + stats panel
   const last  = result.candles.at(-1).close;
   const first = result.candles[0].open;
   const prev  = result.prevClose ?? first;
+  lastPrevClose = prev;
   const diff  = last - prev;
   const pct   = ((diff / prev) * 100).toFixed(2);
   const sign  = diff >= 0 ? '+' : '';
 
   sbSym.textContent   = result.symbol;
   sbPrice.textContent = fmt(last);
-  sbChg.textContent   = `${sign}${fmt(diff)} (${sign}${pct}%)`;
-  sbChg.className     = 'chg';
-  sbChg.style.color   = diff >= 0 ? colors.up : colors.down;
+  sbPct.classList.add('hidden');   // reset; crosshair will show it on hover
   sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
 
-  [sbSym, sbPrice, sbChg, sbExch].forEach(el => el.classList.remove('hidden'));
+  [sbSym, sbPrice, sbExch].forEach(el => el.classList.remove('hidden'));
 
   updateStatsPanel(result, 'intraday');
   updatePrediction(ticker);
+  updateNews(ticker);
+  updateCompany(ticker);
+  startChartRefresh(ticker);
 }
 
 function updateStatsPanel(result, mode) {
@@ -438,7 +559,7 @@ function updateStatsPanel(result, mode) {
   l52.textContent = result.fiftyTwoWeekLow  != null ? fmt(result.fiftyTwoWeekLow)  : '—';
 
   document.getElementById('sp-source').textContent = result.source || '—';
-  document.getElementById('stats-panel').classList.remove('hidden');
+  document.getElementById('si-wrap').classList.remove('hidden');
 }
 
 // ── Prediction helpers ────────────────────────────────────────
@@ -535,6 +656,72 @@ async function updatePrediction(ticker) {
   noteEl.textContent = `Linear reg. · ${window30.length}d`;
 }
 
+// ── Silent chart refresh ─────────────────────────────────────
+let chartRefreshTimer = null;
+
+function stopChartRefresh() {
+  if (chartRefreshTimer) { clearInterval(chartRefreshTimer); chartRefreshTimer = null; }
+  stopObPoll();
+}
+
+function applyCandles(result, mode) {
+  // Update chart data in place — no time scale reset, preserves user's zoom/scroll
+  candleMap.clear();
+  volMap.clear();
+  result.candles.forEach(c => { candleMap.set(c.time, c); volMap.set(c.time, c.volume); });
+  candleSeries.setData(result.candles);
+  volumeSeries.setData(result.candles.map(c => ({
+    time:  c.time,
+    value: c.volume,
+    color: c.close >= c.open ? colors.up + '88' : colors.down + '88'
+  })));
+  cumVolLine.setData(buildCumVolData(result.candles));
+  applyPriceLines(result);
+  const last = result.candles.at(-1).close;
+  const prev = result.prevClose ?? result.candles[0].open;
+  lastPrevClose = prev;
+  sbSym.textContent   = result.symbol;
+  sbPrice.textContent = fmt(last);
+  sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
+  updateStatsPanel(result, mode);
+}
+
+async function silentRefreshIntraday() {
+  const ticker   = tickerInput.value.trim();
+  const date     = dateInput.value.trim().replace(/-/g, '');
+  const interval = intervalSelect.value;
+  if (!ticker || date.length !== 8) return;
+  const result = await stockAPI.fetchStock(ticker, date, interval);
+  if (result.error || !result.candles || result.candles.length === 0) return;
+  applyCandles(result, 'intraday');
+}
+
+async function silentRefreshDaily() {
+  const ticker = tickerInput.value.trim();
+  if (!ticker) return;
+  const endDate   = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const startDate = computeStartDate(endDate, currentPeriod);
+  const result    = await stockAPI.fetchStockRange(ticker, startDate, endDate);
+  if (result.error || !result.candles || result.candles.length === 0) return;
+  applyCandles(result, 'daily');
+}
+
+function startChartRefresh(ticker) {
+  stopChartRefresh();
+  obActiveTicker = ticker;
+  const refreshChart = currentMode === 'daily' ? silentRefreshDaily : silentRefreshIntraday;
+  const tick = () => {
+    refreshChart();
+    if (ticker) {
+      window.orderbookAPI.fetch(ticker).then(data => {
+        if (obActiveTicker === ticker) renderOrderBook(data);
+      });
+    }
+  };
+  tick();
+  chartRefreshTimer = setInterval(tick, 3000);
+}
+
 function fmt(n) { return n == null ? '—' : n.toFixed(2); }
 function fmtVol(n) {
   if (n == null) return '—';
@@ -545,9 +732,246 @@ function fmtVol(n) {
 function showError(msg) { errorMsg.textContent = msg; }
 function showHint(msg)  { hintMsg.textContent  = msg; }
 
+// ── Stats / Info tab switching ───────────────────────────────
+const siTabStats   = document.getElementById('tab-stats');
+const siTabInfo    = document.getElementById('tab-info');
+const statsPanel   = document.getElementById('stats-panel');
+const companyPanel = document.getElementById('company-panel');
+
+function activateSiTab(tab) {
+  const isStats = tab === 'stats';
+  siTabStats.classList.toggle('active', isStats);
+  siTabInfo.classList.toggle('active', !isStats);
+  statsPanel.classList.toggle('hidden', !isStats);
+  companyPanel.classList.toggle('hidden', isStats);
+}
+
+siTabStats.addEventListener('click', () => activateSiTab('stats'));
+siTabInfo.addEventListener('click',  () => activateSiTab('info'));
+
+// ── Company panel ─────────────────────────────────────────────
+function fmtBig(n) {
+  if (n == null) return '—';
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+  if (n >= 1e9)  return (n / 1e9).toFixed(2)  + 'B';
+  if (n >= 1e6)  return (n / 1e6).toFixed(2)  + 'M';
+  if (n >= 1e3)  return (n / 1e3).toFixed(1)  + 'K';
+  return n.toFixed(0);
+}
+function fmtPct(n) { return n == null ? '—' : (n * 100).toFixed(1) + '%'; }
+function fmtX(n)   { return n == null ? '—' : n.toFixed(1) + 'x'; }
+
+async function updateCompany(ticker) {
+  // Reset fields to loading state
+  const ids = ['cp-sector','cp-industry','cp-country','cp-province','cp-employees','cp-founded','cp-website',
+                'cp-mktcap','cp-pe','cp-fwdpe','cp-eps','cp-pb','cp-beta',
+                'cp-revenue','cp-revgrowth','cp-grossm','cp-netm','cp-roe','cp-de','cp-divy'];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '…'; });
+  document.getElementById('cp-desc').textContent = '';
+
+  const d = await window.companyAPI.fetch(ticker);
+  if (d.error) {
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+    return;
+  }
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+
+  set('cp-sector',    d.sector);
+  set('cp-industry',  d.industry);
+  set('cp-country',   d.country);
+  set('cp-province',  d.province);
+  set('cp-employees', d.employees != null ? d.employees.toLocaleString() : null);
+  set('cp-founded',   d.foundDate ? d.foundDate.slice(0, 10) : null);
+  set('cp-mktcap',    fmtBig(d.marketCap));
+  set('cp-pe',        d.trailingPE != null ? d.trailingPE.toFixed(1) : null);
+  set('cp-fwdpe',     d.forwardPE  != null ? d.forwardPE.toFixed(1)  : null);
+  set('cp-eps',       d.eps        != null ? fmt(d.eps)               : null);
+  set('cp-pb',        d.priceToBook != null ? d.priceToBook.toFixed(1) : null);
+  set('cp-beta',      d.beta       != null ? d.beta.toFixed(2)        : null);
+  set('cp-revenue',   fmtBig(d.revenue));
+  set('cp-revgrowth', d.revenueGrowth != null ? fmtPct(d.revenueGrowth) : null);
+  set('cp-grossm',    d.grossMargin   != null ? fmtPct(d.grossMargin)   : null);
+  set('cp-netm',      d.profitMargin  != null ? fmtPct(d.profitMargin)  : null);
+  set('cp-roe',       d.roe           != null ? fmtPct(d.roe)           : null);
+  set('cp-de',        d.debtToEquity  != null ? d.debtToEquity.toFixed(1) : null);
+  set('cp-divy',      d.dividendYield != null ? fmtPct(d.dividendYield) : null);
+
+  // Website — clickable
+  const webEl = document.getElementById('cp-website');
+  if (d.website) {
+    webEl.textContent = d.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    webEl.onclick = () => window.newsAPI.openUrl(d.website);
+  } else {
+    webEl.textContent = '—';
+    webEl.onclick = null;
+  }
+
+  // Description — truncate to ~300 chars
+  const descEl = document.getElementById('cp-desc');
+  if (d.description) {
+    descEl.textContent = d.description.length > 300
+      ? d.description.slice(0, 300) + '…'
+      : d.description;
+    descEl.title = d.description;
+  }
+}
+
+// ── News panel ───────────────────────────────────────────────
+const newsPanel = document.getElementById('news-panel');
+const newsList  = document.getElementById('news-list');
+const newsAge   = document.getElementById('news-age');
+
+function timeAgo(ts) {
+  const s = Math.floor(Date.now() / 1000) - ts;
+  if (s <    60) return `${s}s ago`;
+  if (s <  3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+async function updateNews(ticker) {
+  newsPanel.classList.remove('hidden');
+  newsList.innerHTML = '';
+  newsAge.textContent = 'loading…';
+
+  const data = await window.newsAPI.fetch(ticker);
+  if (data.error || !data.items?.length) {
+    newsAge.textContent = 'no headlines';
+    return;
+  }
+
+  const newest = data.items[0].time;
+  newsAge.textContent = newest ? `· updated ${timeAgo(newest)}` : '';
+
+  data.items.forEach(item => {
+    const li    = document.createElement('li');
+    li.className = 'news-item';
+    li.title     = item.title;
+
+    const timeEl = document.createElement('span');
+    timeEl.className   = 'news-time';
+    timeEl.textContent = item.time ? timeAgo(item.time) : '';
+
+    const pubEl = document.createElement('span');
+    pubEl.className   = 'news-pub';
+    pubEl.textContent = item.publisher;
+
+    const titleEl = document.createElement('span');
+    titleEl.className   = 'news-title';
+    titleEl.textContent = item.title;
+
+    li.appendChild(timeEl);
+    li.appendChild(pubEl);
+    li.appendChild(titleEl);
+
+    if (item.link) {
+      li.addEventListener('click', () => window.newsAPI.openUrl(item.link));
+    }
+
+    newsList.appendChild(li);
+  });
+}
+
 loadBtn.addEventListener('click', load);
 tickerInput.addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 dateInput.addEventListener('keydown',   e => { if (e.key === 'Enter') load(); });
+
+// ── Order book ──────────────────────────────────────────
+const obPanel  = document.getElementById('ob-panel');
+const obAsks   = document.getElementById('ob-asks');
+const obBids   = document.getElementById('ob-bids');
+const obLast   = document.getElementById('ob-last');
+const obSpread = document.getElementById('ob-spread');
+const obTime   = document.getElementById('ob-time');
+const obSrc    = document.getElementById('ob-src');
+
+let obPollTimer   = null;
+let obActiveTicker = null;
+
+function fmtObVol(v) {
+  return v.toLocaleString();
+}
+
+function buildObRows(container, rows, colorClass, labels) {
+  container.innerHTML = '';
+  const maxVol = Math.max(...rows.map(r => r.vol), 1);
+  rows.forEach((r, i) => {
+    const div   = document.createElement('div');
+    div.className = 'ob-row';
+
+    const bg = document.createElement('div');
+    bg.className = 'ob-row-bg';
+    const pct = (r.vol / maxVol * 100).toFixed(1);
+    bg.style.width = pct + '%';
+    bg.style.background = colorClass === 'ask'
+      ? 'rgba(239,83,80,0.12)' : 'rgba(38,166,154,0.12)';
+
+    const lbl   = document.createElement('span');
+    lbl.className = 'ob-lbl';
+    lbl.textContent = labels[i];
+
+    const price = document.createElement('span');
+    price.className = 'ob-price';
+    price.textContent = r.price.toFixed(2);
+
+    const vol = document.createElement('span');
+    vol.className = 'ob-vol';
+    vol.textContent = fmtObVol(r.vol);
+
+    div.appendChild(bg);
+    div.appendChild(lbl);
+    div.appendChild(price);
+    div.appendChild(vol);
+    container.appendChild(div);
+  });
+}
+
+function renderOrderBook(data) {
+  if (data.error || (!data.bids.length && !data.asks.length)) return;
+
+  // Asks: show highest first (sell5 → sell1)
+  const asksSorted = [...data.asks].sort((a, b) => b.price - a.price);
+  const askLabels  = asksSorted.map((_, i) => `S${asksSorted.length - i}`);
+  buildObRows(obAsks, asksSorted, 'ask', askLabels);
+
+  // Bids: show highest first (buy1 → buy5)
+  const bidsSorted = [...data.bids].sort((a, b) => b.price - a.price);
+  const bidLabels  = bidsSorted.map((_, i) => `B${i + 1}`);
+  buildObRows(obBids, bidsSorted, 'bid', bidLabels);
+
+  obLast.textContent = data.price != null ? data.price.toFixed(2) : '—';
+
+  if (data.asks.length && data.bids.length) {
+    const bestAsk = Math.min(...data.asks.map(a => a.price));
+    const bestBid = Math.max(...data.bids.map(b => b.price));
+    const spread  = (bestAsk - bestBid).toFixed(2);
+    obSpread.textContent = `spd ${spread}`;
+  } else {
+    obSpread.textContent = '';
+  }
+
+  const now = new Date();
+  obTime.textContent = now.toLocaleTimeString('en-US', { hour12: false });
+  obSrc.textContent  = data.source || '';
+  obPanel.classList.remove('hidden');
+}
+
+function stopObPoll() {
+  if (obPollTimer) { clearInterval(obPollTimer); obPollTimer = null; }
+}
+
+function startObPoll(ticker) {
+  stopObPoll();
+  obActiveTicker = ticker;
+  const poll = async () => {
+    if (!obActiveTicker) return;
+    const data = await window.orderbookAPI.fetch(obActiveTicker);
+    if (obActiveTicker) renderOrderBook(data);   // guard against stale responses
+  };
+  poll();                              // immediate first fetch
+  obPollTimer = setInterval(poll, 3000);
+}
 
 // ── Watchlist ───────────────────────────────────────────
 const wlTickerList = document.getElementById('wl-ticker-list');

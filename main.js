@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, net, Menu, shell } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -87,6 +87,84 @@ function isNotFound(result) {
 
 // Exchange suffixes to try when a bare symbol returns Not Found (e.g. delisted stocks)
 const EXCHANGE_SUFFIXES = ['.NYSE', '.NAS', '.NASDAQ', '.AMEX', '.NYQ'];
+
+// ── Eastmoney (东方财富) — real-time CN data source ────────────────────────
+// Interval → Eastmoney klt code (2m not supported → promoted to 5m)
+const KLT_MAP = { '1m': 1, '2m': 5, '5m': 5, '15m': 15, '30m': 30, '60m': 60, '1d': 101 };
+
+function symbolToEM(symbol) {
+  const up = symbol.toUpperCase();
+  if (up.endsWith('.SS')) return { secid: `1.${symbol.slice(0, -3)}`, exchange: 'SHH', fullExchange: 'Shanghai' };
+  if (up.endsWith('.SZ')) return { secid: `0.${symbol.slice(0, -3)}`, exchange: 'SHZ', fullExchange: 'Shenzhen' };
+  return null;
+}
+
+async function fetchFromEastmoney(symbol, date, interval, endDate = null) {
+  const em = symbolToEM(symbol);
+  if (!em) return { error: 'Not a CN stock' };
+
+  const klt  = KLT_MAP[interval] || 101;
+  const beg  = date;
+  const end  = endDate || date;
+  const url  = `https://push2his.eastmoney.com/api/qt/stock/kline/get` +
+    `?secid=${em.secid}` +
+    `&fields1=f1,f2,f3,f4,f5,f6` +
+    `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61` +
+    `&klt=${klt}&fqt=0&beg=${beg}&end=${end}&lmt=2000`;
+
+  try {
+    const resp = await netGet(url, { Referer: 'https://www.eastmoney.com/' });
+    let json;
+    try { json = JSON.parse(resp.body); } catch { return { error: 'Invalid response from Eastmoney' }; }
+
+    const data = json?.data;
+    if (!data || !data.klines || !data.klines.length) {
+      return { error: 'No trading data for this date (market closed or holiday)' };
+    }
+
+    // kline format: "datetime,open,close,high,low,volume,amount,amplitude,chgPct,chg,turnover"
+    // Intraday datetime: "2026-04-22 09:31"  → parse as CST (UTC+8)
+    // Daily datetime:    "2026-04-22"         → parse as midnight UTC
+    const candles = data.klines.map(line => {
+      const p      = line.split(',');
+      const dtStr  = p[0];
+      const isoStr = dtStr.includes(' ')
+        ? dtStr.replace(' ', 'T') + ':00+08:00'   // intraday: CST
+        : dtStr + 'T00:00:00Z';                   // daily: midnight UTC
+      const ts = Math.floor(new Date(isoStr).getTime() / 1000);
+      return {
+        time:   ts,
+        open:   parseFloat(p[1]),
+        close:  parseFloat(p[2]),
+        high:   parseFloat(p[3]),
+        low:    parseFloat(p[4]),
+        volume: parseFloat(p[5]) || 0
+      };
+    }).filter(c => !isNaN(c.open) && !isNaN(c.close) && !isNaN(c.time)).sort((a, b) => a.time - b.time);
+
+    if (!candles.length) return { error: 'No valid bars for this date' };
+
+    // Derive prevClose: Eastmoney gives preKPrice on the first kline's parent day,
+    // or we can compute from the first bar's open vs change field in the response.
+    const prevClose = data.preKPrice ?? null;
+
+    return {
+      symbol,
+      currency:         'CNY',
+      exchangeName:     em.exchange,
+      fullExchangeName: em.fullExchange,
+      prevClose,
+      interval,
+      longName:         data.name ?? '',
+      fiftyTwoWeekHigh: null,
+      fiftyTwoWeekLow:  null,
+      source:           'Eastmoney',
+      candles
+    };
+  } catch (e) {
+    return { error: `Eastmoney: ${e.message}` };
+  }
+}
 
 // ── stooq.com fallback (free, keeps delisted US stock history) ─────────────
 async function fetchFromStooq(symbol, date) {
@@ -281,6 +359,40 @@ ipcMain.handle('fetch-stock', async (_event, { ticker, date, interval }) => {
       iv = best;
     }
 
+    // ── CN stocks: use Eastmoney (real-time, no delay) ──────────────────────
+    if (/\.(SS|SZ)$/i.test(symbol)) {
+      // Remap 2m → 5m since Eastmoney doesn't support 2-minute bars
+      const emIv = iv === '2m' ? '5m' : iv;
+      if (iv === '2m') adjustedInterval = '5m';
+
+      async function tryEM(d) {
+        return fetchFromEastmoney(symbol, d, emIv);
+      }
+
+      let result = await tryEM(date);
+
+      if (isNoData(result)) {
+        const originalDate = date;
+        for (let i = 1; i <= 7; i++) {
+          const candidate = shiftDate(date, i);
+          const r = await tryEM(candidate);
+          if (!r.error) {
+            r.adjustedDate = candidate;
+            r.originalDate = originalDate;
+            if (adjustedInterval) r.adjustedInterval = adjustedInterval;
+            return r;
+          }
+          if (!isNoData(r)) break;
+        }
+      }
+
+      if (!result.error) {
+        if (adjustedInterval) result.adjustedInterval = adjustedInterval;
+        return result;
+      }
+      // If Eastmoney fails entirely, fall through to Yahoo as last resort
+    }
+
     async function tryFetch(sym, d) {
       const { start: s, end: e } = dateToRange(d);
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}` +
@@ -397,6 +509,17 @@ let mainWindow = null;
 ipcMain.handle('fetch-stock-range', async (_event, { ticker, startDate, endDate }) => {
   try {
     const symbol = normalizeSymbol(ticker);
+
+    // CN stocks: use Eastmoney for daily range data
+    if (/\.(SS|SZ)$/i.test(symbol)) {
+      const result = await fetchFromEastmoney(symbol, startDate, '1d', endDate);
+      if (!result.error) {
+        result.startDate = startDate;
+        result.endDate   = endDate;
+      }
+      return result;
+    }
+
     const fmt    = d => `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;
     const start  = Math.floor(new Date(`${fmt(startDate)}T00:00:00Z`).getTime() / 1000);
     const end    = Math.floor(new Date(`${fmt(endDate)}T23:59:59Z`).getTime()   / 1000);
@@ -414,6 +537,227 @@ ipcMain.handle('fetch-stock-range', async (_event, { ticker, startDate, endDate 
   } catch (e) {
     return { error: e.message };
   }
+});
+
+// ── Order book ──────────────────────────────────────────────
+ipcMain.handle('fetch-orderbook', async (_event, { ticker }) => {
+  try {
+    const symbol = normalizeSymbol(ticker);
+
+    // CN stocks: Tencent Finance — real-time, 5-level bid/ask
+    if (/\.(SS|SZ)$/i.test(symbol)) {
+      const code   = symbol.slice(0, -3).toLowerCase();
+      const prefix = symbol.toUpperCase().endsWith('.SS') ? 'sh' : 'sz';
+      const url    = `https://qt.gtimg.cn/q=${prefix}${code}`;
+      const resp   = await netGet(url, { Referer: 'https://finance.qq.com/' });
+      const match  = resp.body.match(/="([^"]+)"/);
+      if (!match) return { error: 'No order book data' };
+      const p = match[1].split('~');
+      if (p.length < 30) return { error: 'Unexpected format' };
+
+      const price = parseFloat(p[3]);
+      const bids  = [], asks = [];
+      for (let i = 0; i < 5; i++) {
+        bids.push({ price: parseFloat(p[9  + i * 2]), vol: parseInt(p[10 + i * 2]) || 0 });
+        asks.push({ price: parseFloat(p[19 + i * 2]), vol: parseInt(p[20 + i * 2]) || 0 });
+      }
+      return { symbol, price, bids, asks, levels: 5, source: 'Tencent' };
+    }
+
+    // US/HK stocks: Yahoo Finance v7 quote — best bid/ask only
+    const url  = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
+    const resp = await netGet(url);
+    let json;
+    try { json = JSON.parse(resp.body); } catch { return { error: 'Invalid response' }; }
+    const q = json?.quoteResponse?.result?.[0];
+    if (!q) return { error: 'No quote data' };
+    return {
+      symbol,
+      price:  q.regularMarketPrice ?? null,
+      bids:   q.bid  != null ? [{ price: q.bid,  vol: q.bidSize  ?? 0 }] : [],
+      asks:   q.ask  != null ? [{ price: q.ask,  vol: q.askSize  ?? 0 }] : [],
+      levels: 1,
+      source: 'Yahoo Finance'
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// ── News ────────────────────────────────────────────────────
+ipcMain.handle('fetch-news', async (_event, { ticker }) => {
+  try {
+    const symbol = normalizeSymbol(ticker);
+    // Yahoo Finance RSS — ticker-scoped, no auth needed
+    const url  = `https://feeds.finance.yahoo.com/rss/2.0/headline` +
+      `?s=${encodeURIComponent(symbol)}&region=US&lang=en-US`;
+    const resp = await netGet(url, { Accept: 'application/rss+xml, text/xml, */*' });
+    const xml  = resp.body;
+
+    // Parse <item> blocks with regex (no xml lib needed)
+    const items = [];
+    const itemRx = /<item>([\s\S]*?)<\/item>/g;
+    let m;
+    while ((m = itemRx.exec(xml)) !== null) {
+      const block = m[1];
+      const get   = tag => {
+        const r = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i');
+        return (r.exec(block)?.[1] ?? '').trim();
+      };
+      const title = get('title');
+      const link  = get('link') || get('guid');
+      const pub   = get('pubDate');
+      const src   = get('source') || get('dc:creator') || '';
+      if (!title) continue;
+      items.push({
+        title,
+        publisher: src,
+        link,
+        time: pub ? Math.floor(new Date(pub).getTime() / 1000) : 0
+      });
+    }
+    return { items };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('open-url', (_event, url) => shell.openExternal(url));
+
+// ── Company fundamentals ─────────────────────────────────────
+ipcMain.handle('fetch-company', async (_event, { ticker }) => {
+  const symbol = normalizeSymbol(ticker);
+  let data = {};
+  const fill = (key, val) => { if (data[key] == null && val != null) data[key] = val; };
+
+  // ── CN stocks: Tencent (valuation) + Eastmoney DataCenter (profile) ──
+  if (/\.(SS|SZ)$/i.test(symbol)) {
+    const code    = symbol.slice(0, -3);
+    const prefix  = symbol.toUpperCase().endsWith('.SS') ? 'sh' : 'sz';
+    const emCode  = symbol.toUpperCase().endsWith('.SS') ? `SH${code}` : `SZ${code}`;
+
+    // Tencent full quote — PE, PB, market cap, 52w H/L
+    try {
+      const resp  = await netGet(`https://qt.gtimg.cn/q=${prefix}${code}`, { Referer: 'https://finance.qq.com/' });
+      const match = resp.body.match(/="([^"]+)"/);
+      if (match) {
+        const p = match[1].split('~');
+        const f = (i, scale = 1) => { const v = parseFloat(p[i]); return isNaN(v) || v === 0 ? null : v * scale; };
+        fill('marketCap',  f(43, 1e4));   // 万元 → yuan
+        fill('trailingPE', f(37));
+        fill('priceToBook', f(46));
+        fill('week52High', f(39));
+        fill('week52Low',  f(40));
+        fill('country', 'China');
+      }
+    } catch {}
+
+    // Eastmoney DataCenter — org profile
+    try {
+      const profUrl = `https://datacenter.eastmoney.com/securities/api/data/get` +
+        `?type=RPT_F10_INFO_ORGPROFILE` +
+        `&sty=ORG_NAME,ORG_SHORT_NAME,FOUND_DATE,REG_CAPITAL,STAFF_NUM,PROVINCE_NAME,CITY_NAME,ORG_PROFILE,ORG_WEB,INDUSTRY_EMC` +
+        `&filter=(SECURITY_CODE%3D"${code}")&p=1&ps=1&source=HSF10&client=PC`;
+      const resp = await netGet(profUrl, { Referer: 'https://emweb.securities.eastmoney.com/' });
+      const json = JSON.parse(resp.body);
+      const row  = json?.result?.data?.[0];
+      if (row) {
+        fill('industry',    row.INDUSTRY_EMC ?? '');
+        fill('country',     'China');
+        fill('employees',   row.STAFF_NUM    ? parseInt(row.STAFF_NUM)   : null);
+        fill('website',     row.ORG_WEB      ?? '');
+        fill('description', row.ORG_PROFILE  ?? '');
+        fill('foundDate',   row.FOUND_DATE   ?? '');
+        fill('regCapital',  row.REG_CAPITAL  ?? '');
+        fill('province',    row.PROVINCE_NAME ?? '');
+      }
+    } catch {}
+
+    // Eastmoney DataCenter — latest financial report (revenue, margins, ROE, EPS)
+    try {
+      const finUrl = `https://datacenter.eastmoney.com/securities/api/data/get` +
+        `?type=RPT_LICO_FN_CPD` +
+        `&sty=REPORT_DATE,TOTAL_OPERATE_INCOME,PARENT_NETPROFIT,BASIC_EPS,WEIGHED_ROE,GROSS_PROFIT_RATIO,OPERATE_INCOME_YOY,NETPROFIT_YOY` +
+        `&filter=(SECURITY_CODE%3D"${code}")&p=1&ps=1&sr=-1&st=REPORT_DATE&source=HSF10&client=PC`;
+      const resp = await netGet(finUrl, { Referer: 'https://emweb.securities.eastmoney.com/' });
+      const json = JSON.parse(resp.body);
+      const row  = json?.result?.data?.[0];
+      if (row) {
+        fill('revenue',       row.TOTAL_OPERATE_INCOME ? parseFloat(row.TOTAL_OPERATE_INCOME) : null);
+        fill('revenueGrowth', row.OPERATE_INCOME_YOY   ? parseFloat(row.OPERATE_INCOME_YOY) / 100 : null);
+        fill('grossMargin',   row.GROSS_PROFIT_RATIO   ? parseFloat(row.GROSS_PROFIT_RATIO) / 100  : null);
+        fill('profitMargin',  (row.TOTAL_OPERATE_INCOME && row.PARENT_NETPROFIT)
+          ? parseFloat(row.PARENT_NETPROFIT) / parseFloat(row.TOTAL_OPERATE_INCOME) : null);
+        fill('roe',  row.WEIGHED_ROE ? parseFloat(row.WEIGHED_ROE) / 100 : null);
+        fill('eps',  row.BASIC_EPS   ? parseFloat(row.BASIC_EPS)         : null);
+      }
+    } catch {}
+
+    return Object.keys(data).length ? data : { error: 'No company data available' };
+  }
+
+  // ── US / other stocks: Yahoo quoteSummary + v7 quote fallback ──
+  try {
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}` +
+      `?modules=assetProfile,summaryDetail,defaultKeyStatistics,financialData`;
+    const resp   = await netGet(url, {
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`
+    });
+    const json   = JSON.parse(resp.body);
+    const result = json?.quoteSummary?.result?.[0];
+    if (result) {
+      const ap = result.assetProfile         ?? {};
+      const sd = result.summaryDetail        ?? {};
+      const ks = result.defaultKeyStatistics ?? {};
+      const fd = result.financialData        ?? {};
+      data = {
+        sector:       ap.sector              ?? '',
+        industry:     ap.industry            ?? '',
+        country:      ap.country             ?? '',
+        employees:    ap.fullTimeEmployees   ?? null,
+        website:      ap.website             ?? '',
+        description:  ap.longBusinessSummary ?? '',
+        marketCap:    sd.marketCap?.raw      ?? null,
+        trailingPE:   sd.trailingPE?.raw     ?? null,
+        forwardPE:    sd.forwardPE?.raw      ?? null,
+        dividendYield: sd.dividendYield?.raw ?? null,
+        beta:         sd.beta?.raw           ?? null,
+        avgVolume:    sd.averageVolume?.raw  ?? null,
+        eps:          ks.trailingEps?.raw    ?? null,
+        priceToBook:  ks.priceToBook?.raw    ?? null,
+        sharesOut:    ks.sharesOutstanding?.raw ?? null,
+        revenue:      fd.totalRevenue?.raw   ?? null,
+        revenueGrowth: fd.revenueGrowth?.raw ?? null,
+        grossMargin:  fd.grossMargins?.raw   ?? null,
+        profitMargin: fd.profitMargins?.raw  ?? null,
+        roe:          fd.returnOnEquity?.raw ?? null,
+        debtToEquity: fd.debtToEquity?.raw  ?? null,
+      };
+    }
+  } catch {}
+
+  // v7 quote gap-fill
+  try {
+    const url  = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
+    const resp = await netGet(url);
+    const q    = JSON.parse(resp.body)?.quoteResponse?.result?.[0];
+    if (q) {
+      fill('sector',        q.sector);
+      fill('industry',      q.industry);
+      fill('marketCap',     q.marketCap);
+      fill('trailingPE',    q.trailingPE);
+      fill('forwardPE',     q.forwardPE);
+      fill('dividendYield', q.dividendYield);
+      fill('beta',          q.beta);
+      fill('eps',           q.epsTrailingTwelveMonths);
+      fill('priceToBook',   q.priceToBook);
+      fill('sharesOut',     q.sharesOutstanding);
+      fill('avgVolume',     q.averageVolume);
+    }
+  } catch {}
+
+  return Object.keys(data).length ? data : { error: 'No company data available' };
 });
 
 function createWindow() {

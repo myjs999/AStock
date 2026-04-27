@@ -80,44 +80,106 @@
       </div>
     </div>
 
-    <div id="stats-panel" class="hidden">
-      <div id="sp-name"></div>
-      <div id="sp-exch"></div>
-      <div class="sp-divider"></div>
-      <div class="sp-section">DAY</div>
-      <div class="sp-row"><span class="sp-lbl">O</span><span id="sp-open"></span></div>
-      <div class="sp-row"><span class="sp-lbl">H</span><span id="sp-high" class="sp-hi"></span></div>
-      <div class="sp-row"><span class="sp-lbl">L</span><span id="sp-low"  class="sp-lo"></span></div>
-      <div class="sp-row"><span class="sp-lbl">C</span><span id="sp-close"></span></div>
-      <div class="sp-row"><span class="sp-lbl">V</span><span id="sp-vol"></span></div>
-      <div class="sp-divider"></div>
-      <div class="sp-row"><span class="sp-lbl">Prev C</span><span id="sp-prev"></span></div>
-      <div class="sp-row sp-chg-row"><span id="sp-chg"></span></div>
-      <div class="sp-divider"></div>
-      <div class="sp-section">52 WEEK</div>
-      <div class="sp-row"><span class="sp-lbl">High</span><span id="sp-52h" class="sp-hi"></span></div>
-      <div class="sp-row"><span class="sp-lbl">Low</span><span id="sp-52l" class="sp-lo"></span></div>
-      <div class="sp-divider"></div>
-      <div class="sp-section">SOURCE</div>
-      <div id="sp-source"></div>
-      <div class="sp-divider"></div>
-      <div class="sp-section">TOMORROW</div>
-      <div class="sp-row"><span class="sp-lbl">Price</span><span id="sp-pred-price">—</span></div>
-      <div class="sp-row sp-chg-row"><span id="sp-pred-chg"></span></div>
-      <div class="sp-divider"></div>
-      <div class="sp-section">SIGNALS</div>
-      <div class="sp-row"><span class="sp-lbl">Trend</span><span id="sp-sig-trend">—</span></div>
-      <div class="sp-row"><span class="sp-lbl">RSI 14</span><span id="sp-sig-rsi">—</span></div>
-      <div class="sp-row"><span class="sp-lbl">MA 20</span><span id="sp-sig-ma">—</span></div>
-      <div id="sp-pred-note"></div>
+    <div id="si-wrap" class="hidden">
+      <div id="si-tabs">
+        <button class="si-tab active" id="tab-stats">Stats</button>
+        <button class="si-tab"        id="tab-info">Info</button>
+      </div>
+
+      <div id="stats-panel">
+        <div id="sp-name"></div>
+        <div id="sp-exch"></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">DAY</div>
+        <div class="sp-row"><span class="sp-lbl">O</span><span id="sp-open"></span></div>
+        <div class="sp-row"><span class="sp-lbl">H</span><span id="sp-high" class="sp-hi"></span></div>
+        <div class="sp-row"><span class="sp-lbl">L</span><span id="sp-low"  class="sp-lo"></span></div>
+        <div class="sp-row"><span class="sp-lbl">C</span><span id="sp-close"></span></div>
+        <div class="sp-row"><span class="sp-lbl">V</span><span id="sp-vol"></span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-row"><span class="sp-lbl">Prev C</span><span id="sp-prev"></span></div>
+        <div class="sp-row sp-chg-row"><span id="sp-chg"></span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">52 WEEK</div>
+        <div class="sp-row"><span class="sp-lbl">High</span><span id="sp-52h" class="sp-hi"></span></div>
+        <div class="sp-row"><span class="sp-lbl">Low</span><span id="sp-52l" class="sp-lo"></span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">SOURCE</div>
+        <div id="sp-source"></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">TOMORROW</div>
+        <div class="sp-row"><span class="sp-lbl">Price</span><span id="sp-pred-price">—</span></div>
+        <div class="sp-row sp-chg-row"><span id="sp-pred-chg"></span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">SIGNALS</div>
+        <div class="sp-row"><span class="sp-lbl">Trend</span><span id="sp-sig-trend">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">RSI 14</span><span id="sp-sig-rsi">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">MA 20</span><span id="sp-sig-ma">—</span></div>
+        <div id="sp-pred-note"></div>
+      </div>
+
+      <div id="company-panel" class="hidden">
+        <div class="sp-section">PROFILE</div>
+        <div class="sp-row"><span class="sp-lbl">Sector</span><span id="cp-sector">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Indus.</span><span id="cp-industry">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Country</span><span id="cp-country">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Region</span><span id="cp-province">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Empl.</span><span id="cp-employees">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Founded</span><span id="cp-founded">—</span></div>
+        <div id="cp-website-row" class="sp-row"><span id="cp-website" class="cp-link">—</span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">VALUATION</div>
+        <div class="sp-row"><span class="sp-lbl">Mkt Cap</span><span id="cp-mktcap">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">P/E</span><span id="cp-pe">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Fwd P/E</span><span id="cp-fwdpe">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">EPS</span><span id="cp-eps">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">P/B</span><span id="cp-pb">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Beta</span><span id="cp-beta">—</span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">FINANCIALS</div>
+        <div class="sp-row"><span class="sp-lbl">Revenue</span><span id="cp-revenue">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Rev Grw</span><span id="cp-revgrowth">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Gross M</span><span id="cp-grossm">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">Net M</span><span id="cp-netm">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">ROE</span><span id="cp-roe">—</span></div>
+        <div class="sp-row"><span class="sp-lbl">D/E</span><span id="cp-de">—</span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">DIVIDEND</div>
+        <div class="sp-row"><span class="sp-lbl">Yield</span><span id="cp-divy">—</span></div>
+        <div class="sp-divider"></div>
+        <div class="sp-section">ABOUT</div>
+        <div id="cp-desc">—</div>
+      </div>
     </div>
 
+    <div id="ob-panel" class="hidden">
+      <div class="ob-title">ORDER BOOK</div>
+      <div id="ob-asks"></div>
+      <div id="ob-mid">
+        <span id="ob-last"></span>
+        <span id="ob-spread"></span>
+      </div>
+      <div id="ob-bids"></div>
+      <div id="ob-footer">
+        <span id="ob-time"></span>
+        <span id="ob-src"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="news-panel" class="hidden">
+    <div id="news-header">
+      <span id="news-label">NEWS</span>
+      <span id="news-age"></span>
+    </div>
+    <ul id="news-list"></ul>
   </div>
 
   <div id="statusbar">
     <span class="sym hidden"  id="sb-sym"></span>
     <span class="price hidden" id="sb-price"></span>
-    <span class="chg hidden"   id="sb-chg"></span>
+    <span class="pct hidden"   id="sb-pct"></span>
     <span class="exch hidden"  id="sb-exch"></span>
     <span class="utc-note">Times in ET (New York)</span>
   </div>
