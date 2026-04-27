@@ -2,6 +2,9 @@ const { app, BrowserWindow, ipcMain, net, Menu, shell } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
+// Keep userData at the original path regardless of package name changes
+app.setPath('userData', path.join(app.getPath('appData'), 'stocks-app'));
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 function netGet(url, extraHeaders = {}) {
