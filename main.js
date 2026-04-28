@@ -125,10 +125,23 @@ async function fetchFromEastmoney(symbol, date, interval, endDate = null) {
       return { error: 'No trading data for this date (market closed or holiday)' };
     }
 
+    // For intraday intervals the API ignores beg/end and returns the latest N bars.
+    // Filter raw klines to only those whose datetime prefix matches the requested date.
+    const reqDateStr = beg.length === 8
+      ? `${beg.slice(0,4)}-${beg.slice(4,6)}-${beg.slice(6,8)}`
+      : null;
+    const klines = (klt !== 101 && reqDateStr && beg === end)
+      ? data.klines.filter(line => line.startsWith(reqDateStr))
+      : data.klines;
+
+    if (!klines.length) {
+      return { error: 'No trading data for this date (market closed or holiday)' };
+    }
+
     // kline format: "datetime,open,close,high,low,volume,amount,amplitude,chgPct,chg,turnover"
     // Intraday datetime: "2026-04-22 09:31"  → parse as CST (UTC+8)
     // Daily datetime:    "2026-04-22"         → parse as midnight UTC
-    const candles = data.klines.map(line => {
+    const candles = klines.map(line => {
       const p      = line.split(',');
       const dtStr  = p[0];
       const isoStr = dtStr.includes(' ')
