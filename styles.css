@@ -81,8 +81,9 @@ body {
   flex-shrink: 0;
   transition: border-color 0.15s, color 0.15s;
 }
-.nav-btn:hover  { border-color: #2962ff; color: #d1d4dc; }
-.nav-btn:active { background: #1e222d; }
+.nav-btn:hover       { border-color: #2962ff; color: #d1d4dc; }
+.nav-btn:active      { background: #1e222d; }
+.nav-btn.mini-active { border-color: #2962ff; color: #2962ff; }
 
 #load-btn {
   background: #2962ff;

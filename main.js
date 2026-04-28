@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, net, Menu, shell, screen } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 
@@ -774,6 +774,56 @@ ipcMain.handle('fetch-company', async (_event, { ticker }) => {
   } catch {}
 
   return Object.keys(data).length ? data : { error: 'No company data available' };
+});
+
+// ── Mini window ──────────────────────────────────────────────
+let miniWindow = null;
+
+function createMiniWindow() {
+  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  miniWindow = new BrowserWindow({
+    width: 280,
+    height: 44,
+    x: width - 300,
+    y: 20,
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    backgroundColor: '#131722',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  miniWindow.loadFile('mini.html');
+  miniWindow.setAlwaysOnTop(true, 'floating');
+  miniWindow.on('closed', () => {
+    miniWindow = null;
+    mainWindow?.show();
+    mainWindow?.webContents.send('mini-closed');
+  });
+}
+
+ipcMain.handle('toggle-mini', () => {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.close();
+    return false;
+  }
+  createMiniWindow();
+  mainWindow?.hide();
+  return true;
+});
+
+ipcMain.on('mini-update', (_event, data) => {
+  if (miniWindow && !miniWindow.isDestroyed()) {
+    miniWindow.webContents.send('mini-data', data);
+  }
+});
+
+ipcMain.on('mini-restore', () => {
+  miniWindow?.close();
 });
 
 function createWindow() {

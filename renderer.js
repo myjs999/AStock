@@ -684,6 +684,7 @@ function applyCandles(result, mode) {
   sbPrice.textContent = fmt(last);
   sbExch.textContent  = result.exchangeName + ' · ' + result.currency;
   updateStatsPanel(result, mode);
+  if (miniMode) sendMiniUpdate();
 }
 
 async function silentRefreshIntraday() {
@@ -1074,6 +1075,43 @@ function showHelp() { helpModal.classList.remove('hidden'); }
 function hideHelp() { helpModal.classList.add('hidden'); }
 
 document.getElementById('help-btn').addEventListener('click', showHelp);
+
+// ── Mini mode ────────────────────────────────────────────────
+const miniBtn = document.getElementById('mini-btn');
+let miniMode  = false;
+
+function sendMiniUpdate() {
+  const sym   = sbSym.textContent;
+  const price = sbPrice.textContent.split(' ')[4] ?? sbPrice.textContent; // last C value
+  // Re-derive price + pct from the last candle data
+  if (!sym || sym === '') return;
+  const lastC = [...candleMap.values()].at(-1);
+  if (!lastC) return;
+  const p    = lastC.close;
+  const prev = lastPrevClose ?? lastC.open;
+  const diff = p - prev;
+  const pct  = ((diff / prev) * 100).toFixed(2);
+  const sign = diff >= 0 ? '+' : '';
+  window.miniAPI.update({
+    sym,
+    price: p.toFixed(2),
+    pct:   `${sign}${pct}%`,
+    up:    diff >= 0
+  });
+}
+
+async function toggleMini() {
+  miniMode = await window.miniAPI.toggle();
+  miniBtn.classList.toggle('mini-active', miniMode);
+  if (miniMode) sendMiniUpdate();
+}
+
+miniBtn.addEventListener('click', toggleMini);
+
+window.miniAPI.onMiniClosed(() => {
+  miniMode = false;
+  miniBtn.classList.remove('mini-active');
+});
 document.getElementById('help-close').addEventListener('click', hideHelp);
 helpModal.addEventListener('click', e => { if (e.target === helpModal) hideHelp(); });
 
@@ -1145,5 +1183,6 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight')         { e.preventDefault(); navDate(+1); }
   else if (e.key === 't' || e.key === 'T') goToday();
   else if (e.key === 'r' || e.key === 'R') load();
+  else if (e.key === 'm' || e.key === 'M') toggleMini();
   else if (e.key === '?')                  { e.preventDefault(); showHelp(); }
 });

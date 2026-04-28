@@ -27,3 +27,11 @@ contextBridge.exposeInMainWorld('newsAPI', {
 contextBridge.exposeInMainWorld('companyAPI', {
   fetch: (ticker) => ipcRenderer.invoke('fetch-company', { ticker })
 });
+
+contextBridge.exposeInMainWorld('miniAPI', {
+  toggle:       ()     => ipcRenderer.invoke('toggle-mini'),
+  update:       (data) => ipcRenderer.send('mini-update', data),
+  restore:      ()     => ipcRenderer.send('mini-restore'),
+  onData:       (cb)   => ipcRenderer.on('mini-data',   (_e, d) => cb(d)),
+  onMiniClosed: (cb)   => ipcRenderer.on('mini-closed', ()      => cb())
+});
