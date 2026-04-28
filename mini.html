@@ -48,6 +48,12 @@
       font-weight: 600;
     }
 
+    #turnover {
+      font-size: 11px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      color: #787b86;
+    }
+
     #placeholder {
       font-size: 12px;
       color: #4c525e;
@@ -74,17 +80,19 @@
 <body>
   <div id="drag-area">
     <span id="placeholder">No data loaded</span>
-    <span id="sym"   style="display:none"></span>
-    <span id="price" style="display:none"></span>
-    <span id="pct"   style="display:none"></span>
+    <span id="sym"      style="display:none"></span>
+    <span id="price"    style="display:none"></span>
+    <span id="pct"      style="display:none"></span>
+    <span id="turnover" style="display:none"></span>
   </div>
   <button id="restore-btn" title="Restore window">↗</button>
 
   <script>
-    const symEl   = document.getElementById('sym');
-    const priceEl = document.getElementById('price');
-    const pctEl   = document.getElementById('pct');
-    const phEl    = document.getElementById('placeholder');
+    const symEl      = document.getElementById('sym');
+    const priceEl    = document.getElementById('price');
+    const pctEl      = document.getElementById('pct');
+    const turnoverEl = document.getElementById('turnover');
+    const phEl       = document.getElementById('placeholder');
 
     document.getElementById('restore-btn').addEventListener('click', () => {
       window.miniAPI.restore();
@@ -104,6 +112,13 @@
       priceEl.textContent = d.price;
       pctEl.textContent   = d.pct;
       pctEl.style.color   = d.up ? '#26a69a' : '#ef5350';
+
+      if (d.turnover) {
+        turnoverEl.textContent   = `T/O ${d.turnover}`;
+        turnoverEl.style.display = '';
+      } else {
+        turnoverEl.style.display = 'none';
+      }
     });
   </script>
 </body>

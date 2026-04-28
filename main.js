@@ -577,7 +577,8 @@ ipcMain.handle('fetch-orderbook', async (_event, { ticker }) => {
         bids.push({ price: parseFloat(p[9  + i * 2]), vol: parseInt(p[10 + i * 2]) || 0 });
         asks.push({ price: parseFloat(p[19 + i * 2]), vol: parseInt(p[20 + i * 2]) || 0 });
       }
-      return { symbol, price, bids, asks, levels: 5, source: 'Tencent' };
+      const turnover = parseFloat(p[36]) || null;   // 换手率 %
+      return { symbol, price, bids, asks, levels: 5, source: 'Tencent', turnover };
     }
 
     // US/HK stocks: Yahoo Finance v7 quote — best bid/ask only
@@ -782,9 +783,9 @@ let miniWindow = null;
 function createMiniWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   miniWindow = new BrowserWindow({
-    width: 280,
+    width: 330,
     height: 44,
-    x: width - 300,
+    x: width - 350,
     y: 20,
     frame: false,
     alwaysOnTop: true,

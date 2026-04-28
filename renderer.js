@@ -304,6 +304,7 @@ async function loadDaily() {
   showHint('');
   infoStrip.classList.add('hidden');
   stopChartRefresh();
+  lastTurnover = null;
   loadBtn.disabled = true;
   loadBtn.textContent = 'Loading…';
   placeholder.classList.add('hidden');
@@ -887,8 +888,9 @@ const obSpread = document.getElementById('ob-spread');
 const obTime   = document.getElementById('ob-time');
 const obSrc    = document.getElementById('ob-src');
 
-let obPollTimer   = null;
+let obPollTimer    = null;
 let obActiveTicker = null;
+let lastTurnover   = null;   // latest turnover rate % from order book
 
 function fmtObVol(v) {
   return v.toLocaleString();
@@ -930,6 +932,7 @@ function buildObRows(container, rows, colorClass, labels) {
 
 function renderOrderBook(data) {
   if (data.error || (!data.bids.length && !data.asks.length)) return;
+  if (data.turnover != null) lastTurnover = data.turnover;
 
   // Asks: show highest first (sell5 → sell1)
   const asksSorted = [...data.asks].sort((a, b) => b.price - a.price);
@@ -1094,9 +1097,10 @@ function sendMiniUpdate() {
   const sign = diff >= 0 ? '+' : '';
   window.miniAPI.update({
     sym,
-    price: p.toFixed(2),
-    pct:   `${sign}${pct}%`,
-    up:    diff >= 0
+    price:    p.toFixed(2),
+    pct:      `${sign}${pct}%`,
+    up:       diff >= 0,
+    turnover: lastTurnover != null ? lastTurnover.toFixed(2) + '%' : null
   });
 }
 
