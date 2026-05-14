@@ -109,7 +109,15 @@ async function fetchFromEastmoney(symbol, date, interval, endDate = null) {
   const klt  = KLT_MAP[interval] || 101;
   const beg  = date;
   const end  = endDate || date;
-  const url  = `https://push2his.eastmoney.com/api/qt/stock/kline/get` +
+
+  // push2his is the historical (cached) server — can lag ~15 min for today's bars.
+  // push2 is the real-time server — use it when fetching today's intraday data.
+  const today = new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    .replace(/\//g, '').replace(/-/g, '');   // → "20260429"
+  const isIntradayToday = klt !== 101 && beg === end && beg === today;
+  const host = isIntradayToday ? 'push2.eastmoney.com' : 'push2his.eastmoney.com';
+
+  const url  = `https://${host}/api/qt/stock/kline/get` +
     `?secid=${em.secid}` +
     `&fields1=f1,f2,f3,f4,f5,f6` +
     `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61` +
