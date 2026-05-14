@@ -28,6 +28,15 @@ contextBridge.exposeInMainWorld('companyAPI', {
   fetch: (ticker) => ipcRenderer.invoke('fetch-company', { ticker })
 });
 
+contextBridge.exposeInMainWorld('settingsAPI', {
+  load: ()     => ipcRenderer.invoke('settings-load'),
+  save: (data) => ipcRenderer.invoke('settings-save', data)
+});
+
+contextBridge.exposeInMainWorld('xueqiuAPI', {
+  fetchQuote: (ticker) => ipcRenderer.invoke('fetch-xueqiu-quote', { ticker })
+});
+
 contextBridge.exposeInMainWorld('miniAPI', {
   toggle:       ()     => ipcRenderer.invoke('toggle-mini'),
   update:       (data) => ipcRenderer.send('mini-update', data),

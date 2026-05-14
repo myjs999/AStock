@@ -835,6 +835,73 @@ ipcMain.on('mini-restore', () => {
   miniWindow?.close();
 });
 
+// ── Settings persistence ─────────────────────────────────────
+function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
+
+function loadSettings() {
+  try {
+    const p = settingsPath();
+    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
+  } catch { return {}; }
+}
+
+function saveSettings(data) {
+  try { fs.writeFileSync(settingsPath(), JSON.stringify(data, null, 2), 'utf8'); return true; }
+  catch { return false; }
+}
+
+ipcMain.handle('settings-load', () => loadSettings());
+ipcMain.handle('settings-save', (_e, data) => saveSettings(data));
+
+// ── Xueqiu quote (10-level order book for CN stocks) ─────────
+ipcMain.handle('fetch-xueqiu-quote', async (_event, { ticker }) => {
+  const settings = loadSettings();
+  const token    = settings.xqToken?.trim();
+  if (!token) return { error: 'No Xueqiu token configured' };
+
+  const symbol = normalizeSymbol(ticker);
+  // Xueqiu uses SH/SZ prefix (uppercase), no dot
+  let xqSym = symbol;
+  if (symbol.toUpperCase().endsWith('.SS')) xqSym = 'SH' + symbol.slice(0, -3);
+  else if (symbol.toUpperCase().endsWith('.SZ')) xqSym = 'SZ' + symbol.slice(0, -3);
+  else if (symbol.toUpperCase().endsWith('.HK')) xqSym = symbol.toUpperCase().replace('.HK', '') .padStart(5, '0');
+
+  try {
+    const url  = `https://stock.xueqiu.com/v5/stock/quote.json?symbol=${xqSym}&extend=detail`;
+    const resp = await netGet(url, {
+      Cookie:  `xq_a_token=${token}`,
+      Referer: 'https://xueqiu.com/',
+      'Accept-Language': 'zh-CN,zh;q=0.9'
+    });
+    const json = JSON.parse(resp.body);
+    if (json.error_code && json.error_code !== 0) return { error: json.error_description ?? 'Xueqiu error' };
+
+    const q = json?.data?.quote;
+    if (!q) return { error: 'No quote data from Xueqiu' };
+
+    // Build up to 10-level bids/asks
+    const bids = [], asks = [];
+    for (let i = 1; i <= 10; i++) {
+      const bp = q[`bid${i}`], bv = q[`bid_vol${i}`] ?? q[`bid${i}_volume`];
+      const ap = q[`ask${i}`], av = q[`ask_vol${i}`] ?? q[`ask${i}_volume`];
+      if (bp != null && bp !== 0) bids.push({ price: bp, vol: bv ?? 0 });
+      if (ap != null && ap !== 0) asks.push({ price: ap, vol: av ?? 0 });
+    }
+
+    return {
+      symbol,
+      price:    q.current ?? null,
+      bids,
+      asks,
+      levels:   Math.max(bids.length, asks.length),
+      turnover: q.turnover_rate ?? null,
+      source:   'Xueqiu'
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,

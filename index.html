@@ -43,6 +43,7 @@
     <span id="error-msg"></span>
     <span id="hint-msg"></span>
     <button class="nav-btn" id="help-btn" title="Keyboard Shortcuts (?)" style="margin-left:auto">?</button>
+    <button class="nav-btn" id="settings-btn" title="Settings">&#9881;</button>
     <button class="nav-btn" id="mini-btn" title="Mini mode (M)">&#8212;</button>
   </div>
 
@@ -183,6 +184,27 @@
     <span class="pct hidden"   id="sb-pct"></span>
     <span class="exch hidden"  id="sb-exch"></span>
     <span class="utc-note">Times in ET (New York)</span>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="hidden">
+    <div id="settings-box">
+      <div id="settings-header">
+        <span>Settings</span>
+        <button id="settings-close">&#x2715;</button>
+      </div>
+      <div class="settings-section-label">XUEQIU TOKEN</div>
+      <div class="settings-hint">
+        Log in at <span class="settings-link" id="xq-open-link">xueqiu.com</span>, then open
+        DevTools → Application → Cookies → copy <code>xq_a_token</code>
+      </div>
+      <input id="xq-token-input" type="password" placeholder="Paste xq_a_token here" spellcheck="false">
+      <div id="xq-status"></div>
+      <div class="settings-actions">
+        <button id="settings-save-btn">Save</button>
+        <button id="xq-test-btn">Test</button>
+      </div>
+    </div>
   </div>
 
   <!-- Help modal -->

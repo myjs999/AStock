@@ -715,7 +715,10 @@ function startChartRefresh(ticker) {
   const tick = () => {
     refreshChart();
     if (ticker) {
-      window.orderbookAPI.fetch(ticker).then(data => {
+      const fetchOB = appSettings.xqToken
+        ? window.xueqiuAPI.fetchQuote(ticker).then(d => d.error ? window.orderbookAPI.fetch(ticker) : d)
+        : window.orderbookAPI.fetch(ticker);
+      fetchOB.then(data => {
         if (obActiveTicker === ticker) renderOrderBook(data);
       });
     }
@@ -733,6 +736,56 @@ function fmtVol(n) {
 }
 function showError(msg) { errorMsg.textContent = msg; }
 function showHint(msg)  { hintMsg.textContent  = msg; }
+
+// ── Settings modal ───────────────────────────────────────────
+let appSettings = {};
+
+async function settingsInit() {
+  appSettings = await window.settingsAPI.load();
+  if (appSettings.xqToken) {
+    document.getElementById('xq-token-input').value = appSettings.xqToken;
+  }
+}
+settingsInit();
+
+const settingsModal = document.getElementById('settings-modal');
+const xqStatus      = document.getElementById('xq-status');
+
+function showSettings() { settingsModal.classList.remove('hidden'); xqStatus.textContent = ''; xqStatus.className = ''; }
+function hideSettings() { settingsModal.classList.add('hidden'); }
+
+document.getElementById('settings-btn').addEventListener('click', showSettings);
+document.getElementById('settings-close').addEventListener('click', hideSettings);
+settingsModal.addEventListener('click', e => { if (e.target === settingsModal) hideSettings(); });
+
+document.getElementById('xq-open-link').addEventListener('click', () => {
+  window.newsAPI.openUrl('https://xueqiu.com');
+});
+
+document.getElementById('settings-save-btn').addEventListener('click', async () => {
+  const token = document.getElementById('xq-token-input').value.trim();
+  appSettings.xqToken = token;
+  await window.settingsAPI.save(appSettings);
+  xqStatus.textContent = 'Saved.';
+  xqStatus.className   = 'ok';
+  setTimeout(hideSettings, 800);
+});
+
+document.getElementById('xq-test-btn').addEventListener('click', async () => {
+  const token = document.getElementById('xq-token-input').value.trim();
+  if (!token) { xqStatus.textContent = 'Paste a token first.'; xqStatus.className = 'err'; return; }
+  appSettings.xqToken = token;   // test with current input without saving yet
+  await window.settingsAPI.save(appSettings);
+  xqStatus.textContent = 'Testing…'; xqStatus.className = '';
+  const data = await window.xueqiuAPI.fetchQuote(tickerInput.value.trim() || 'AAPL');
+  if (data.error) {
+    xqStatus.textContent = `✗ ${data.error}`;
+    xqStatus.className   = 'err';
+  } else {
+    xqStatus.textContent = `✓ Connected — ${data.source}, ${data.levels} levels`;
+    xqStatus.className   = 'ok';
+  }
+});
 
 // ── Stats / Info tab switching ───────────────────────────────
 const siTabStats   = document.getElementById('tab-stats');
