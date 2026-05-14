@@ -112,8 +112,9 @@ async function fetchFromEastmoney(symbol, date, interval, endDate = null) {
 
   // push2his is the historical (cached) server — can lag ~15 min for today's bars.
   // push2 is the real-time server — use it when fetching today's intraday data.
-  const today = new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
-    .replace(/\//g, '').replace(/-/g, '');   // → "20260429"
+  // Use en-CA locale which gives zero-padded YYYY-MM-DD, then strip dashes → YYYYMMDD
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' })
+    .format(new Date()).replace(/-/g, '');
   const isIntradayToday = klt !== 101 && beg === end && beg === today;
   const host = isIntradayToday ? 'push2.eastmoney.com' : 'push2his.eastmoney.com';
 
